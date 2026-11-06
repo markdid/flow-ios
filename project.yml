@@ -23,6 +23,15 @@ targets:
     sources: [App]
     dependencies:
       - package: FlowCore
+  FlowPrototypeTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources: [AppTests]
+    dependencies:
+      - target: FlowPrototype
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: org.example.flowprototype.tests
   FlowPrototypeUITests:
     type: bundle.ui-testing
     platform: iOS
@@ -39,4 +48,5 @@ schemes:
         FlowPrototype: all
     test:
       targets:
+        - FlowPrototypeTests
         - FlowPrototypeUITests

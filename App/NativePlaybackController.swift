@@ -47,6 +47,26 @@ import FlowCore
         configureRemoteCommands()
         loadCurrent()
     }
+    #if DEBUG
+    /// Test-only local fixture entry. Never resolves or requests remote media.
+    func startLocalTestFixture(_ url: URL) {
+        precondition(url.isFileURL)
+        stop()
+        sessionID = UUID()
+        wantsPlayback = true
+        initialResume = 0
+        queue.replace(with: [])
+        configureObservers()
+        let source = PlaybackSource(id: "local-test-fixture", url: url,
+                                    label: "Generated local test video", kind: .video)
+        sources = [source]
+        selectedSource = nil
+        position = 0
+        duration = 0
+        select(source)
+    }
+    #endif
+
     private func loadCurrent() {
         guard sessionID != nil else { return }
         resolveTask?.cancel()

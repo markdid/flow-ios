@@ -107,7 +107,7 @@ struct PlaybackView: View {
                 if let failure { Text(failure).font(.footnote).foregroundStyle(.red) }
                 if canRetryPage { Button("Retry player page") { lifetime.retry() } }
                 if let blockedNavigation { Text(blockedNavigation).font(.footnote).foregroundStyle(.secondary) }
-                Text("Tap Play in YouTube's official player. A loaded page does not confirm video playback. YouTube may show an embedding, age, login or availability restriction; this app does not bypass it.")
+                Text("Tap Play in YouTube's official player. A loaded page does not confirm playback. If YouTube asks you to sign in or confirm you are not a bot, use Open on YouTube to continue in YouTube or your browser. Signing in there does not sign this private embedded player in. This app does not bypass YouTube restrictions.")
                     .font(.footnote).foregroundStyle(.secondary)
                 Link("Open on YouTube", destination: video.watchURL)
                 NavigationLink("Video details and related") { WatchDetailsView(video: video) }
