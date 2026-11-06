@@ -1,0 +1,67 @@
+Flow Android Client
+Copyright (C) 2025-2026 A-EDev
+Swift adaptations and modifications prepared 2026-11-06.
+https://github.com/Flow-Tube/Flow
+Upstream inspected at 3f3e2a6101fe511003f8b694876fe8c6ece89c66
+GPL version 3; see LICENSE.
+
+VideoSearch.swift adapts portions of:
+app/src/main/java/io/github/aedev/flow/innertube/InnerTube.kt (webSearch)
+app/src/main/java/io/github/aedev/flow/innertube/models/YouTubeClient.kt (WEB client values)
+app/src/main/java/io/github/aedev/flow/innertube/pages/search/SearchPageParser.kt
+app/src/main/java/io/github/aedev/flow/innertube/pages/renderer/FeedItemParsers.kt
+
+These are modified Swift translations supporting a subset of the upstream functionality.
+This independent prototype is not an official Flow release.
+
+Further adapted source paths:
+app/src/main/java/io/github/aedev/flow/innertube/YouTube.kt (visitorData)
+app/src/main/java/io/github/aedev/flow/innertube/pages/renderer/LockupItemParser.kt
+app/src/main/java/io/github/aedev/flow/innertube/pages/renderer/ShelfParser.kt
+app/src/main/java/io/github/aedev/flow/innertube/pages/channel/ChannelTabsParser.kt
+app/src/main/java/io/github/aedev/flow/innertube/pages/channel/ChannelGridParser.kt
+See Documentation/ for other module provenance and limitations.
+
+Subscription feed source adaptation:
+app/src/main/java/io/github/aedev/flow/data/subscriptions/ChannelRssParser.kt
+app/src/main/java/io/github/aedev/flow/data/subscriptions/ChannelRssClient.kt
+Chronological deduplication inspired by SubscriptionFeedMerger.kt; metadata enrichment,
+notifications, persistent feed caching and complete lookback behavior are not yet ported.
+
+Subscription transfer adaptation:
+app/src/main/java/io/github/aedev/flow/data/backup/NewPipeSubscriptionCodec.kt
+The Swift implementation supports canonical channel IDs only; handles/legacy resolution is omitted.
+
+SponsorBlock subset adaptation:
+app/src/main/java/io/github/aedev/flow/data/model/SponsorBlockSegment.kt
+app/src/main/java/io/github/aedev/flow/player/sponsorblock/SponsorBlockActionPolicy.kt
+app/src/main/java/io/github/aedev/flow/player/sponsorblock/SponsorBlockHandler.kt
+app/src/main/java/io/github/aedev/flow/data/repository/SponsorBlockRepository.kt
+Read-only segment lookup and manual/automatic-once skipping only; no submission or voting.
+
+Download feature design reference (new native iOS implementation, not full parity):
+app/src/main/java/io/github/aedev/flow/data/video/downloader/resolve/DownloadStreamResolver.kt
+app/src/main/java/io/github/aedev/flow/data/video/downloader/request/DownloadRequest.kt
+app/src/main/java/io/github/aedev/flow/data/video/DownloadStreamPolicy.kt
+
+Remote playlist subset adaptation (Swift modifications 2026-11-06):
+app/src/main/java/io/github/aedev/flow/innertube/pages/VideoPlaylistPage.kt
+app/src/main/java/io/github/aedev/flow/innertube/YouTube.kt (videoPlaylistPage)
+app/src/main/java/io/github/aedev/flow/data/repository/YouTubePlaylistRepository.kt
+Public browse/pagination and Shorts-grid list fallback only; no full sync/mix parity.
+
+Read-only video comments subset (Swift modifications 2026-11-06):
+app/src/main/java/io/github/aedev/flow/innertube/pages/VideoCommentsPage.kt
+app/src/main/java/io/github/aedev/flow/innertube/pages/CommentsParsing.kt
+app/src/main/java/io/github/aedev/flow/innertube/InnerTube.kt (nextWatch)
+Public text, sort and reply pagination only; no posting/reaction or rich-text parity.
+
+Watch details/related subset (Swift modifications 2026-11-06):
+app/src/main/java/io/github/aedev/flow/innertube/pages/VideoDescriptionPage.kt
+app/src/main/java/io/github/aedev/flow/innertube/models/response/WatchMetadataResponse.kt
+app/src/main/java/io/github/aedev/flow/innertube/InnerTube.kt (nextWatch)
+Plain description/factoids/channel and first-page related videos only; no rich-text/live metadata parity.
+
+Google Takeout CSV subset (Swift modifications 2026-11-06):
+app/src/main/java/io/github/aedev/flow/data/local/YouTubeTakeoutCsvParser.kt
+Local subscription and playlist-video CSV only; no ZIP/history/music-library import parity.

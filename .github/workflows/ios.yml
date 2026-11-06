@@ -1,0 +1,47 @@
+name: iOS build and package tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ios-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-test:
+    # Standard GitHub-hosted runner; no larger/paid runner or signing secrets.
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Show toolchain
+        run: |
+          xcodebuild -version
+          swift --version
+      - name: Test portable core (debug)
+        run: swift test --package-path FlowCore
+      - name: Test portable core (release)
+        run: swift test -c release --package-path FlowCore
+      - name: Compile and test dormant solver gates on Apple platforms
+        run: swift test --package-path Experimental/FlowSignatureSolver
+      - name: Install XcodeGen
+        env:
+          HOMEBREW_NO_AUTO_UPDATE: '1'
+        run: brew install xcodegen
+      - name: Generate Xcode project
+        run: xcodegen generate
+      - name: Build iOS simulator app (unsigned)
+        run: >-
+          xcodebuild -project FlowPrototype.xcodeproj
+          -scheme FlowPrototype -sdk iphonesimulator
+          -destination 'generic/platform=iOS Simulator'
+          -configuration Debug -derivedDataPath DerivedData
+          CODE_SIGNING_ALLOWED=NO build

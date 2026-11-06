@@ -1,0 +1,12 @@
+.build/
+.swiftpm/
+DerivedData/
+*.xcuserstate
+xcuserdata/
+.DS_Store
+*.xcodeproj/
+Documentation/VerificationLogs/
+.env
+.env.*
+*.p12
+*.mobileprovision
