@@ -91,3 +91,25 @@ All **188 portable tests pass in debug and release** using official Linux Swift 
 Normal video links now point to the official embed in source, with the actual bundle identifier, manual play, visible below-player diagnostics and Open on YouTube fallback. Native is explicit experimental. Same-identity embed retry is limited to explicit transient network failures. Main-frame document changes outside the current embed are blocked and diagnosed separately from existing-player state; subframes/media are untouched. Native source restoration is conservative and requires fresh Play after restoring position.
 
 No new live player, stream or embed request was made. Prior native probe remained UNPLAYABLE; this milestone does not establish working playback. Actual identity propagation, YouTube consent/link behavior, video/audio start, fullscreen and cleanup, retries/cancellations, AVKit seek/pause/replay ordering, Apple compilation/signing and device/simulator verification all remain outstanding. Secondary feature expansion was paused when playback became the priority; earlier local-import edits were preserved and included in the portable regression run.
+
+
+## First successful Apple build, 2026-11-06
+
+Source commit `8ec150106c0af8bb46a791b49936d28bac87ae62` passed
+[GitHub Actions run 42296567191](https://github.com/markdid/flow-ios/actions/runs/42296567191)
+on standard `macos-15`, using Xcode 16.4 and iOS Simulator SDK 18.5.
+
+- FlowCore: 188 XCTest tests passed in debug and 188 in release, zero failures.
+- Dormant FlowSignatureSolver: Apple branch compiled; six pre-execution gate tests passed.
+  These tests do not execute third-party or player JavaScript.
+- XcodeGen project generation passed.
+- Unsigned Debug iOS Simulator build passed for arm64 and x86_64.
+
+The first run failed because FlowCore omitted a macOS deployment target and SwiftPM
+selected an older default incompatible with async APIs. Declaring macOS 12 fixed host
+testing without changing the iOS 16 deployment target.
+
+No simulator app launch, UI test, live YouTube playback, real device, signing,
+installation, performance or battery check was performed. No IPA or downloadable
+app artifact was produced. Earlier notes are historical; this supersedes their
+Apple compilation status, not their runtime caveats.

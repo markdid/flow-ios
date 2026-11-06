@@ -7,6 +7,16 @@ Upstream inspected: `3f3e2a6101fe511003f8b694876fe8c6ece89c66` (2026-11-06).
 Licensed GPL-3.0-only; full upstream license retained in LICENSE. Not an official Flow release.
 No upstream artwork or brand assets are included.
 
+## Current build verification (2026-11-06)
+
+[GitHub Actions run 42296567191](https://github.com/markdid/flow-ios/actions/runs/42296567191)
+passed for source commit `8ec150106c0af8bb46a791b49936d28bac87ae62` on a standard
+GitHub-hosted macOS runner: 188 FlowCore tests in debug and release, six dormant solver
+gate tests, XcodeGen generation and an unsigned iOS Simulator app build (arm64/x86_64).
+No simulator app launch, device test, live playback validation, signing or IPA was performed.
+Older milestone notes below describe the evidence available when those features were added;
+this build result supersedes their statements that Apple compilation had not yet run.
+
 ## Implemented source
 
 - SwiftUI library/navigation and add/cancel/delete flows.
@@ -34,10 +44,10 @@ No dependency is installed or account changed by this project.
 
 FlowCore has been compiled and its 188 tests pass on Linux with official Swift 6.0.3.
 See [verification details](Documentation/Verification.md) for commands and configurations.
-The SwiftUI app has not been compiled or simulator-tested; this Linux environment has no
-Xcode or Apple SDK. Project generation remains unverified. There is no IPA.
+The SwiftUI app now compiles for iOS Simulator in GitHub Actions. Simulator UI/runtime
+behavior and device playback remain untested. There is no IPA.
 
-## Prepared GitHub Actions checks
+## GitHub Actions checks
 
 `.github/workflows/ios.yml` uses a standard GitHub-hosted `macos-15` runner,
 read-only repository permissions and no signing credentials. It runs FlowCore debug
@@ -45,7 +55,7 @@ and release tests, compiles and tests the dormant solver package's pre-execution
 gates, generates the Xcode project with XcodeGen and builds an unsigned iOS Simulator
 app. The workflow has a 30-minute timeout and cancels superseded runs.
 
-The workflow is prepared but has not run. A successful compile will not establish
+The workflow passed at the source commit linked above. Compilation does not establish
 simulator UI behavior, device playback, signing or installability. No IPA is produced.
 
 ## Verification on device still required

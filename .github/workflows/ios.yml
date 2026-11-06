@@ -45,3 +45,32 @@ jobs:
           -destination 'generic/platform=iOS Simulator'
           -configuration Debug -derivedDataPath DerivedData
           CODE_SIGNING_ALLOWED=NO build
+      - name: Select an available iPhone simulator
+        run: |
+          xcrun simctl list devices available -j > /tmp/flow-simulators.json
+          python3 - <<'PYTHON'
+          import json, os
+          data = json.load(open('/tmp/flow-simulators.json'))
+          phones = [d for runtime, devices in data['devices'].items() if 'iOS' in runtime
+                    for d in devices if d.get('isAvailable') and d['name'].startswith('iPhone')]
+          if not phones:
+              raise SystemExit('No available iPhone simulator')
+          with open(os.environ['GITHUB_ENV'], 'a') as env:
+              env.write('FLOW_SIMULATOR=' + phones[0]['udid'] + '\n')
+          PYTHON
+      - name: Run bounded simulator UI smoke and official-player observation
+        timeout-minutes: 12
+        run: >-
+          xcodebuild -project FlowPrototype.xcodeproj -scheme FlowPrototype
+          -destination "platform=iOS Simulator,id=$FLOW_SIMULATOR"
+          -configuration Debug -derivedDataPath DerivedData
+          -resultBundlePath SmokeResults.xcresult
+          -parallel-testing-enabled NO CODE_SIGNING_ALLOWED=NO test
+      - name: Preserve simulator test evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: simulator-smoke-evidence
+          path: SmokeResults.xcresult
+          retention-days: 3
+          if-no-files-found: ignore
