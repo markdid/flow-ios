@@ -46,6 +46,11 @@ final class FlowSmokeTests: XCTestCase {
     }
 
     func testObserveOfficialEmbeddedPlayer() throws {
+        // Explicit opt-in only. The first cloud attempt received YouTube's bot check.
+        // Routine CI must not repeatedly retry that restriction.
+        guard ProcessInfo.processInfo.environment["FLOW_LIVE_PLAYER_OBSERVATION"] == "1" else {
+            throw XCTSkip("Live provider observation is disabled; prior cloud attempt was refused by YouTube.")
+        }
         let app = XCUIApplication(); app.launch()
         XCTAssertTrue(app.buttons["Add video"].waitForExistence(timeout: 15))
         addVideo(app, title: "Public video playback observation")

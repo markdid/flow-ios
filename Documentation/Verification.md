@@ -113,3 +113,26 @@ No simulator app launch, UI test, live YouTube playback, real device, signing,
 installation, performance or battery check was performed. No IPA or downloadable
 app artifact was produced. Earlier notes are historical; this supersedes their
 Apple compilation status, not their runtime caveats.
+
+
+## Simulator smoke and refused embedded playback, 2026-11-06
+
+[Run 42297245160](https://github.com/markdid/flow-ios/actions/runs/42297245160),
+commit `85053916f2dfb8390bf293fd328fc0f8df659c07`, passed the package checks,
+iOS build and two XCUITest methods. The local smoke test exercised launch, Cancel,
+save and persistence across app restart. The observation method reached the official
+embedded player for public video `jNQXAC9IVRw`, found and tapped "Play video" once,
+and captured UI/screenshot evidence at approximately 5 and 10 seconds.
+
+Both snapshots show YouTube's "Sign in to confirm you’re not a bot" and "This helps
+protect our community" message. No media playback was established. The observation
+test intentionally does not equate page load with playback success. No sign-in,
+challenge-solving, alternate client identity or bypass was attempted. Live observation
+is subsequently gated off by default to avoid repeatedly retrying the restriction;
+routine CI retains only offline UI smoke testing. The app itself is unchanged.
+
+The initial xcresult evidence is retained for three days:
+https://github.com/markdid/flow-ios/actions/runs/42297245160/artifacts/13541464169
+
+No physical-device, audio, background-playback, seek, battery or performance validation
+was performed. Basic simulator navigation/persistence is the only new runtime claim.

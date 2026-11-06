@@ -7,7 +7,21 @@ Upstream inspected: `3f3e2a6101fe511003f8b694876fe8c6ece89c66` (2026-11-06).
 Licensed GPL-3.0-only; full upstream license retained in LICENSE. Not an official Flow release.
 No upstream artwork or brand assets are included.
 
-## Current build verification (2026-11-06)
+## Simulator smoke result (2026-11-06)
+
+[Run 42297245160](https://github.com/markdid/flow-ios/actions/runs/42297245160) passed
+for commit `85053916f2dfb8390bf293fd328fc0f8df659c07`: app launch, cancelling the add
+sheet, saving a synthetic bookmark and persistence across restart were exercised in
+iOS Simulator. Package tests and app compilation also passed again.
+
+**Playback is still not verified.** The official embedded player opened for the public
+video "Me at the zoo". After one normal Play interaction, YouTube displayed
+"Sign in to confirm you’re not a bot" at both observation points. No login, challenge
+solving, alternate client or bypass was attempted. Live observation is now disabled
+by default so routine CI does not retry the restriction. A green smoke run is not a
+successful playback result. Device behavior and daily-use readiness remain unverified.
+
+## Earlier build verification (2026-11-06)
 
 [GitHub Actions run 42296567191](https://github.com/markdid/flow-ios/actions/runs/42296567191)
 passed for source commit `8ec150106c0af8bb46a791b49936d28bac87ae62` on a standard
