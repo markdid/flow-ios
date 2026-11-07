@@ -44,6 +44,7 @@ enum RelativeAge {
 /// On-device interest profile built from watch history and subscriptions.
 struct InterestProfile {
     var terms: [String: Double] = [:]
+    var termVideos: [String: Int] = [:]
     var channels: [String: Double] = [:]
     var watched: Set<String> = []
 
@@ -70,7 +71,7 @@ struct InterestProfile {
             let engagement = entry.duration > 0 ? min(1, max(0.15, entry.progress * 1.2)) : 0.5
             let weight = exp(-ageDays / 21) * engagement
             let item = cache.item(entry.videoID, fallbackTitle: titles[entry.videoID] ?? "")
-            for token in Set(Self.tokens(item.title)) { terms[token, default: 0] += weight }
+            for token in Set(Self.tokens(item.title)) { terms[token, default: 0] += weight; termVideos[token, default: 0] += 1 }
             if let channel = item.channelID ?? item.channel { channels[channel, default: 0] += weight }
         }
         for subscription in subscriptions { channels[subscription.id, default: 0] += 0.6 }
@@ -79,7 +80,7 @@ struct InterestProfile {
     var isEmpty: Bool { terms.isEmpty && channels.isEmpty }
 
     func topTerms(_ count: Int) -> [String] {
-        terms.filter { $0.value >= 0.3 }.sorted { $0.value > $1.value }.prefix(count).map(\.key)
+        terms.filter { $0.value >= 0.3 && termVideos[$0.key, default: 0] >= 2 }.sorted { $0.value > $1.value }.prefix(count).map(\.key)
     }
 
     func score(_ video: VideoItem) -> Double {
