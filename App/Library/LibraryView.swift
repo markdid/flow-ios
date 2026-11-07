@@ -32,12 +32,12 @@ struct LibraryView: View {
                 }
             }
             Section("Playlists") {
-                ForEach(library.snapshot.playlists) { playlist in
+                ForEach(library.snapshot.playlists.filter { $0.id != LocalPlaylist.savedShortsID }) { playlist in
                     NavigationLink(value: Route.playlist(id: playlist.id)) {
                         Label {
                             HStack { Text(playlist.name); Spacer(); Text("\(playlist.videoIDs.count)").foregroundStyle(.secondary) }
                         } icon: {
-                            Image(systemName: playlist.id == LocalPlaylist.watchLaterID ? "clock" : playlist.id == LocalPlaylist.savedShortsID ? "bolt" : "music.note.list")
+                            Image(systemName: playlist.id == LocalPlaylist.watchLaterID ? "clock" : "music.note.list")
                         }
                     }
                     .swipeActions {

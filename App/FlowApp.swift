@@ -38,7 +38,14 @@ struct RootView: View {
                 .tabItem { Label("Library", systemImage: "books.vertical") }
         }
         .modifier(MiniPlayerAccessory())
-        .fullScreenCover(isPresented: $player.expanded) { WatchView() }
+        .overlay {
+            if player.expanded {
+                WatchView()
+                    .transition(.move(edge: .bottom))
+                    .zIndex(1)
+            }
+        }
+        .animation(.snappy(duration: 0.3), value: player.expanded)
     }
 
     private func tab<Content: View>(_ tab: AppTab, path: Binding<[Route]>, @ViewBuilder content: () -> Content) -> some View {

@@ -10,34 +10,43 @@ struct WatchView: View {
     @State private var dragOffset: CGFloat = 0
 
     var body: some View {
-        VStack(spacing: 0) {
+        GeometryReader { proxy in
             VStack(spacing: 0) {
-                header
-                playerArea
-            }
-            .background(Color.black.ignoresSafeArea(edges: .top))
-            if let video = player.current {
-                ScrollView {
-                    LazyVStack(alignment: .leading, spacing: 16) {
-                        info(video)
-                        channelRow(video)
-                        actions(video)
-                        commentsCard
-                        if !player.related.isEmpty {
-                            ForEach(player.related) { VideoRow(video: $0) }
-                        } else if player.details == nil {
-                            ForEach(0..<4, id: \.self) { _ in SkeletonCard(compact: true) }
-                        }
-                    }
-                    .padding(.horizontal, 12).padding(.top, 12).padding(.bottom, 24)
+                VStack(spacing: 0) {
+                    Color.clear.frame(height: proxy.safeAreaInsets.top)
+                    header
+                    playerArea
                 }
-                .id(video.id)
-            } else {
-                Spacer()
+                .background(Color.black)
+                .gesture(headerDrag)
+                if let video = player.current {
+                    ScrollView {
+                        LazyVStack(alignment: .leading, spacing: 16) {
+                            info(video)
+                            channelRow(video)
+                            actions(video)
+                            commentsCard
+                            if !player.related.isEmpty {
+                                ForEach(player.related) { VideoRow(video: $0) }
+                            } else if player.details == nil {
+                                ForEach(0..<4, id: \.self) { _ in SkeletonCard(compact: true) }
+                            }
+                        }
+                        .padding(.horizontal, 12).padding(.top, 12).padding(.bottom, 24)
+                    }
+                    .id(video.id)
+                } else {
+                    Spacer()
+                }
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+            .background(Color(.systemBackground))
+            .clipShape(RoundedRectangle(cornerRadius: dragOffset > 0 ? 28 : 0, style: .continuous))
+            .shadow(color: .black.opacity(dragOffset > 0 ? 0.25 : 0), radius: 20)
+            .offset(y: dragOffset)
+            .ignoresSafeArea()
         }
-        .background(Color(.systemBackground))
-        .offset(y: dragOffset)
+        .statusBarHidden(dragOffset == 0)
         .sheet(isPresented: Bindable(player).commentsPresented) {
             if let id = player.current?.id {
                 NavigationStack { VideoCommentsView(videoID: id) }
@@ -62,13 +71,12 @@ struct WatchView: View {
         .foregroundStyle(.white)
         .padding(.horizontal, 4)
         .contentShape(Rectangle())
-        .gesture(dismissDrag)
     }
 
     private var playerArea: some View {
         ZStack {
             Color.black
-            PlayerSurface(player: player.player)
+            PlayerSurface(player: player.player, onDrag: drag, onDragEnd: endDrag)
             switch player.status {
             case .loading:
                 ProgressView().tint(.white).controlSize(.large)
@@ -88,13 +96,25 @@ struct WatchView: View {
         .aspectRatio(16 / 9, contentMode: .fit)
     }
 
-    private var dismissDrag: some Gesture {
-        DragGesture()
-            .onChanged { dragOffset = max(0, $0.translation.height) }
-            .onEnded { value in
-                if value.translation.height > 120 { player.expanded = false }
-                withAnimation(.snappy) { dragOffset = 0 }
+    private var headerDrag: some Gesture {
+        DragGesture(minimumDistance: 10)
+            .onChanged { drag($0.translation.height) }
+            .onEnded { endDrag($0.translation.height, $0.velocity.height) }
+    }
+
+    private func drag(_ translation: CGFloat) {
+        dragOffset = max(0, translation)
+    }
+
+    private func endDrag(_ translation: CGFloat, _ velocity: CGFloat) {
+        if translation > 140 || (translation > 30 && velocity > 700) {
+            withAnimation(.snappy(duration: 0.3)) {
+                player.expanded = false
             }
+            Task { try? await Task.sleep(for: .milliseconds(350)); dragOffset = 0 }
+        } else {
+            withAnimation(.snappy) { dragOffset = 0 }
+        }
     }
 
     private func info(_ video: VideoItem) -> some View {

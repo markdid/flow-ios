@@ -71,5 +71,5 @@ extension VideoSearchPage {
 }
 
 extension WatchDetails {
-    var relatedItems: [VideoItem] { related.map { VideoItem($0, relatedPresentation[$0.id]) } }
+    var relatedItems: [VideoItem] { related.map { VideoItem($0, relatedPresentation[$0.id]) }.filter { !$0.isShort } }
 }

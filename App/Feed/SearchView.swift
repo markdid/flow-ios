@@ -64,7 +64,7 @@ enum SearchSuggestions {
             do {
                 let page = try await VideoSearchClient().search(query: query, continuation: token, params: params)
                 guard !Task.isCancelled else { return }
-                let new = page.items.filter { item in !self.items.contains { $0.id == item.id } }
+                let new = page.items.filter { item in !item.isShort && !self.items.contains { $0.id == item.id } }
                 cache.remember(new)
                 self.items += new
                 self.continuation = page.continuation

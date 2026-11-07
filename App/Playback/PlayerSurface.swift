@@ -6,6 +6,9 @@ import SwiftUI
 /// backgrounded so iOS keeps playing audio instead of pausing video.
 struct PlayerSurface: UIViewControllerRepresentable {
     let player: AVPlayer
+    /// Downward swipe on the video: called with the vertical translation, then on release with translation and velocity.
+    var onDrag: (CGFloat) -> Void = { _ in }
+    var onDragEnd: (CGFloat, CGFloat) -> Void = { _, _ in }
 
     func makeUIViewController(context: Context) -> AVPlayerViewController {
         let controller = AVPlayerViewController()
@@ -15,16 +18,41 @@ struct PlayerSurface: UIViewControllerRepresentable {
         controller.updatesNowPlayingInfoCenter = false
         controller.delegate = context.coordinator
         context.coordinator.attach(controller, player: player)
+        let pan = UIPanGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.pan(_:)))
+        pan.delegate = context.coordinator
+        controller.view.addGestureRecognizer(pan)
         return controller
     }
 
     func updateUIViewController(_ controller: AVPlayerViewController, context: Context) {
         if controller.player !== player, !context.coordinator.detached { controller.player = player }
+        context.coordinator.onDrag = onDrag
+        context.coordinator.onDragEnd = onDragEnd
     }
 
     func makeCoordinator() -> Coordinator { Coordinator() }
 
-    final class Coordinator: NSObject, AVPlayerViewControllerDelegate {
+    final class Coordinator: NSObject, AVPlayerViewControllerDelegate, UIGestureRecognizerDelegate {
+        var onDrag: (CGFloat) -> Void = { _ in }
+        var onDragEnd: (CGFloat, CGFloat) -> Void = { _, _ in }
+
+        @objc func pan(_ gesture: UIPanGestureRecognizer) {
+            let translation = gesture.translation(in: gesture.view?.window).y
+            switch gesture.state {
+            case .changed: onDrag(translation)
+            case .ended, .cancelled, .failed: onDragEnd(translation, gesture.velocity(in: gesture.view?.window).y)
+            default: break
+            }
+        }
+
+        func gestureRecognizerShouldBegin(_ gesture: UIGestureRecognizer) -> Bool {
+            guard let pan = gesture as? UIPanGestureRecognizer else { return true }
+            let velocity = pan.velocity(in: pan.view)
+            return velocity.y > 0 && velocity.y > abs(velocity.x) * 1.2
+        }
+
+        func gestureRecognizer(_ gesture: UIGestureRecognizer, shouldRecognizeSimultaneouslyWith other: UIGestureRecognizer) -> Bool { true }
+
         private weak var controller: AVPlayerViewController?
         private weak var player: AVPlayer?
         private var pipActive = false

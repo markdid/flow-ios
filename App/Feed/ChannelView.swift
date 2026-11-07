@@ -27,7 +27,7 @@ import SwiftUI
                 guard !Task.isCancelled else { return }
                 if let name = page.title, !name.isEmpty { self.title = name }
                 if let header = page.header { self.header = header }
-                if !page.tabs.isEmpty { self.tabs = page.tabs.filter { ["Videos", "Shorts", "Live"].contains($0.title) } }
+                if !page.tabs.isEmpty { self.tabs = page.tabs.filter { ["Videos", "Live"].contains($0.title) } }
                 let avatar = self.header?.avatar
                 let new = page.feed.items.map { item -> VideoItem in
                     var item = item
@@ -35,7 +35,7 @@ import SwiftUI
                     item.channelID = item.channelID ?? id
                     item.channelAvatar = item.channelAvatar ?? avatar
                     return item
-                }.filter { item in !self.items.contains { $0.id == item.id } }
+                }.filter { item in !item.isShort && !self.items.contains { $0.id == item.id } }
                 cache.remember(new)
                 self.items += new
                 self.continuation = page.feed.continuation
@@ -52,13 +52,10 @@ import SwiftUI
         selected = params
         load(cache: cache)
     }
-
-    var isShortsTab: Bool { tabs.first { $0.params == selected }?.title == "Shorts" }
 }
 
 struct ChannelView: View {
     @Environment(MetadataCache.self) private var cache
-    @Environment(PlayerModel.self) private var player
     @State private var model: ChannelModel
     @State private var expandedAbout = false
 
@@ -69,13 +66,9 @@ struct ChannelView: View {
             LazyVStack(alignment: .leading, spacing: 18, pinnedViews: [.sectionHeaders]) {
                 header
                 Section {
-                    if model.isShortsTab {
-                        shortsGrid
-                    } else {
-                        ForEach(model.items) { video in
-                            VideoCard(video: video)
-                                .onAppear { if video.id == model.items.last?.id { model.load(more: true, cache: cache) } }
-                        }
+                    ForEach(model.items) { video in
+                        VideoCard(video: video)
+                            .onAppear { if video.id == model.items.last?.id { model.load(more: true, cache: cache) } }
                     }
                     if model.loading {
                         if model.items.isEmpty { ForEach(0..<2, id: \.self) { _ in SkeletonCard() } } else { ProgressView().frame(maxWidth: .infinity) }
@@ -145,25 +138,5 @@ struct ChannelView: View {
         .padding(.horizontal, 12).padding(.top, 8)
         .background(.bar)
         .overlay(alignment: .bottom) { Divider() }
-    }
-
-    private var shortsGrid: some View {
-        LazyVGrid(columns: [GridItem(.flexible(), spacing: 4), GridItem(.flexible(), spacing: 4), GridItem(.flexible(), spacing: 4)], spacing: 4) {
-            ForEach(model.items) { video in
-                Button { player.play(video) } label: {
-                    Color(.secondarySystemFill)
-                        .aspectRatio(9 / 16, contentMode: .fit)
-                        .overlay { AsyncImage(url: URL(string: "https://i.ytimg.com/vi/\(video.id)/oar2.jpg")) { $0.image?.resizable().scaledToFill() } }
-                        .overlay(alignment: .bottomLeading) {
-                            Text(video.title).font(.caption2.weight(.semibold)).foregroundStyle(.white).lineLimit(2)
-                                .padding(6).shadow(radius: 3)
-                        }
-                        .clipped()
-                }
-                .buttonStyle(.plain)
-                .onAppear { if video.id == model.items.last?.id { model.load(more: true, cache: cache) } }
-            }
-        }
-        .padding(.horizontal, 4)
     }
 }
