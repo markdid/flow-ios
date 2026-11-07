@@ -40,7 +40,14 @@ struct Thumbnail: View {
                 }
             }
             .overlay(alignment: .bottomTrailing) {
-                if let duration = video.duration {
+                if video.isLive {
+                    Text("LIVE")
+                        .font(.caption2.weight(.bold))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 5).padding(.vertical, 2)
+                        .background(.red, in: RoundedRectangle(cornerRadius: 4))
+                        .padding(6)
+                } else if let duration = video.duration {
                     Text(duration)
                         .font(.caption2.weight(.semibold)).monospacedDigit()
                         .foregroundStyle(.white)
@@ -62,12 +69,52 @@ struct Thumbnail: View {
 }
 
 struct ChannelAvatar: View {
+    var url: URL? = nil
     let name: String?
     var size: CGFloat = 36
     var body: some View {
-        Circle().fill(Color.accentColor.gradient)
+        Circle().fill(Color(.tertiarySystemFill))
             .frame(width: size, height: size)
-            .overlay { Text(String((name ?? "?").prefix(1)).uppercased()).font(.system(size: size * 0.45, weight: .semibold)).foregroundStyle(.white) }
+            .overlay {
+                if let url {
+                    AsyncImage(url: url) { phase in
+                        if let image = phase.image { image.resizable().scaledToFill() } else { initial }
+                    }
+                } else { initial }
+            }
+            .clipShape(Circle())
+            .accessibilityHidden(true)
+    }
+    private var initial: some View {
+        Text(String((name ?? "?").trimmingCharacters(in: CharacterSet(charactersIn: "@")).prefix(1)).uppercased())
+            .font(.system(size: size * 0.42, weight: .semibold)).foregroundStyle(.secondary)
+    }
+}
+
+/// Grey placeholder shown while a feed loads.
+struct SkeletonCard: View {
+    var compact = false
+    var body: some View {
+        if compact {
+            HStack(alignment: .top, spacing: 10) {
+                RoundedRectangle(cornerRadius: 8).fill(Color(.secondarySystemFill)).aspectRatio(16 / 9, contentMode: .fit).frame(width: 160)
+                VStack(alignment: .leading, spacing: 6) {
+                    bar(width: nil); bar(width: 100); bar(width: 70)
+                }
+            }
+        } else {
+            VStack(alignment: .leading, spacing: 10) {
+                Rectangle().fill(Color(.secondarySystemFill)).aspectRatio(16 / 9, contentMode: .fit)
+                HStack(alignment: .top, spacing: 12) {
+                    Circle().fill(Color(.secondarySystemFill)).frame(width: 36, height: 36)
+                    VStack(alignment: .leading, spacing: 6) { bar(width: nil); bar(width: 180) }
+                }
+                .padding(.horizontal, 12)
+            }
+        }
+    }
+    private func bar(width: CGFloat?) -> some View {
+        RoundedRectangle(cornerRadius: 4).fill(Color(.secondarySystemFill)).frame(width: width, height: 12).frame(maxWidth: width == nil ? .infinity : nil, alignment: .leading)
     }
 }
 
@@ -82,7 +129,7 @@ struct VideoCard: View {
             VStack(alignment: .leading, spacing: 10) {
                 Thumbnail(video: video, progress: library.progress(video.id))
                 HStack(alignment: .top, spacing: 12) {
-                    ChannelAvatar(name: video.channel)
+                    channelButton
                     VStack(alignment: .leading, spacing: 3) {
                         Text(video.title).font(.subheadline.weight(.semibold)).lineLimit(2).multilineTextAlignment(.leading)
                         Text(video.subtitle).font(.caption).foregroundStyle(.secondary).lineLimit(1)
@@ -95,6 +142,18 @@ struct VideoCard: View {
         }
         .buttonStyle(.plain)
         .contextMenu { VideoMenu(video: video) }
+    }
+
+    @Environment(Router.self) private var router
+    @ViewBuilder private var channelButton: some View {
+        if let id = video.channelID {
+            Button { router.open(.channel(id: id, name: video.channel ?? "")) } label: {
+                ChannelAvatar(url: video.channelAvatar, name: video.channel)
+            }
+            .buttonStyle(.plain)
+        } else {
+            ChannelAvatar(url: video.channelAvatar, name: video.channel)
+        }
     }
 }
 
@@ -159,10 +218,10 @@ extension LibraryStore {
         guard let channelID else { return false }
         return snapshot.subscriptions.contains { $0.id == channelID }
     }
-    func toggleSubscription(id: String, name: String) {
+    func toggleSubscription(id: String, name: String, avatar: URL? = nil) {
         Task {
             if isSubscribed(id) { await perform(.unsubscribe(id)) }
-            else { await perform(.subscribe(LocalSubscription(id: id, name: name))) }
+            else { await perform(.subscribe(LocalSubscription(id: id, name: name, thumbnailURL: avatar))) }
         }
     }
 }

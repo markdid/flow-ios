@@ -25,6 +25,7 @@ public struct VideoPresentation: Sendable {
     public let published: String?
     public let thumbnailURL: URL
     public let isShort: Bool
+    public var channelAvatar: URL? = nil
 }
 
 public struct VideoSearchPage: Sendable {
@@ -107,8 +108,21 @@ public enum VideoSearchParser {
             duration: text(renderer?["lengthText"]) ?? badge,
             views: text(renderer?["viewCountText"]) ?? parts.first(where: isViews),
             published: text(renderer?["publishedTimeText"]) ?? parts.first(where: isDate),
-            thumbnailURL: URL(string: "https://i.ytimg.com/vi/\(reference.id)/hqdefault.jpg")!, isShort: isShort)
+            thumbnailURL: URL(string: "https://i.ytimg.com/vi/\(reference.id)/hqdefault.jpg")!, isShort: isShort,
+            channelAvatar: avatar(renderer, metadata))
         return (reference, details)
+    }
+    private static func avatar(_ renderer: Object?, _ metadata: Object?) -> URL? {
+        let legacy = objects(path(renderer, "channelThumbnailSupportedRenderers", "channelThumbnailWithLinkRenderer", "thumbnail", "thumbnails"))
+            + objects(path(renderer, "channelThumbnail", "thumbnails"))
+        let modern = objects(path(metadata, "image", "decoratedAvatarViewModel", "avatar", "avatarViewModel", "image", "sources"))
+        return largest(legacy + modern)
+    }
+    static func largest(_ sources: [[String: Any]]) -> URL? {
+        let best = sources.max { ($0["width"] as? Int ?? 0) < ($1["width"] as? Int ?? 0) }
+        guard var string = best?["url"] as? String else { return nil }
+        if string.hasPrefix("//") { string = "https:" + string }
+        return URL(string: string)
     }
     private static func expandShelf(_ entry: Object) -> [Object] {
         let rich = entry["richSectionRenderer"] as? Object

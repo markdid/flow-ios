@@ -15,6 +15,10 @@ public struct VideoComment: Identifiable, Equatable, Sendable {
     public let likes: String?
     public let pinned: Bool
     public let repliesToken: String?
+    public var avatar: URL? = nil
+    public var replyCount: String? = nil
+    public var isCreator = false
+    public var hearted = false
 }
 public struct CommentSort: Identifiable, Equatable, Sendable {
     public var id: String { token }
@@ -115,6 +119,10 @@ public enum VideoCommentsParser {
                 comment = VideoComment(id: id, author: path(entity, "author", "displayName") as? String ?? "", text: content,
                     published: properties["publishedTime"] as? String, likes: text(path(entity, "toolbar", "likeCountNotliked")),
                     pinned: [text(model["pinnedText"]), text(properties["pinnedText"])].contains(where: { $0?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false }) || thread?["renderingPriority"] as? String == "RENDERING_PRIORITY_PINNED_COMMENT", repliesToken: replyToken)
+                comment?.avatar = (path(entity, "author", "avatarThumbnailUrl") as? String).flatMap(URL.init(string:))
+                comment?.replyCount = (path(entity, "toolbar", "replyCount") as? String).flatMap { $0.isEmpty ? nil : $0 }
+                comment?.isCreator = path(entity, "author", "isCreator") as? Bool ?? false
+                comment?.hearted = (path(entity, "toolbar", "heartActiveTooltip") as? String).map { !$0.isEmpty } ?? false
             } else if let legacy = path(thread, "comment", "commentRenderer") as? Object ?? (replies ? entry["commentRenderer"] as? Object : nil),
                       let id = legacy["commentId"] as? String, !id.isEmpty, let content = text(legacy["contentText"]) {
                 comment = VideoComment(id: id, author: text(legacy["authorText"]) ?? "", text: content, published: text(legacy["publishedTimeText"]), likes: text(legacy["voteCount"]), pinned: legacy["pinnedCommentBadge"] != nil || thread?["renderingPriority"] as? String == "RENDERING_PRIORITY_PINNED_COMMENT", repliesToken: replyToken)

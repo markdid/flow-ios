@@ -20,7 +20,7 @@ struct SubscriptionsView: View {
                             ForEach(subscriptions) { channel in
                                 NavigationLink(value: Route.channel(id: channel.id, name: channel.name)) {
                                     VStack(spacing: 6) {
-                                        ChannelAvatar(name: channel.name, size: 52)
+                                        ChannelAvatar(url: channel.thumbnailURL, name: channel.name, size: 52)
                                         Text(channel.name).font(.caption2).lineLimit(1).frame(width: 64)
                                     }
                                 }
@@ -33,7 +33,7 @@ struct SubscriptionsView: View {
                 if subscriptions.isEmpty, !library.loading {
                     Text("No subscriptions").foregroundStyle(.secondary).frame(maxWidth: .infinity).padding(.top, 80)
                 } else if model.items.isEmpty, model.loading {
-                    ProgressView().frame(maxWidth: .infinity).padding(.top, 60)
+                    ForEach(0..<3, id: \.self) { _ in SkeletonCard() }
                 }
                 ForEach(model.items) { VideoCard(video: $0) }
             }
@@ -62,7 +62,7 @@ struct SubscriptionManagerView: View {
             Section {
                 ForEach(library.snapshot.subscriptions.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }) { channel in
                     NavigationLink(value: Route.channel(id: channel.id, name: channel.name)) {
-                        HStack { ChannelAvatar(name: channel.name, size: 32); Text(channel.name) }
+                        HStack { ChannelAvatar(url: channel.thumbnailURL, name: channel.name, size: 32); Text(channel.name) }
                     }
                     .swipeActions { Button("Unsubscribe", role: .destructive) { Task { await library.perform(.unsubscribe(channel.id)) } } }
                 }

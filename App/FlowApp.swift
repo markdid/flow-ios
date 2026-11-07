@@ -16,7 +16,7 @@ import SwiftUI
                 .environment(router)
                 .onAppear {
                     player.configure(library: library, cache: cache)
-                    DebugLaunch.run(player: player)
+                    DebugLaunch.run(player: player, router: router)
                 }
         }
     }
@@ -82,11 +82,19 @@ struct MiniPlayerAccessory: ViewModifier {
     }
 }
 
-/// `-play <videoID>` launch argument, used for simulator checks.
+/// Launch arguments for simulator checks: `-play <id>`, `-search <query>`, `-channel <id>`.
 enum DebugLaunch {
-    @MainActor static func run(player: PlayerModel) {
+    @MainActor static func run(player: PlayerModel, router: Router) {
         let arguments = ProcessInfo.processInfo.arguments
-        guard let index = arguments.firstIndex(of: "-play"), index + 1 < arguments.count else { return }
-        player.play(VideoItem(id: arguments[index + 1], title: ""))
+        func value(_ flag: String) -> String? {
+            guard let index = arguments.firstIndex(of: flag), index + 1 < arguments.count else { return nil }
+            return arguments[index + 1]
+        }
+        if let id = value("-play") { player.play(VideoItem(id: id, title: "")) }
+        if arguments.contains("-comments") {
+            Task { try? await Task.sleep(for: .seconds(6)); player.commentsPresented = true }
+        }
+        if let query = value("-search") { router.home.append(.search(query)) }
+        if let id = value("-channel") { router.home.append(.channel(id: id, name: "")) }
     }
 }

@@ -7,37 +7,42 @@ struct WatchView: View {
     @Environment(Router.self) private var router
     @EnvironmentObject private var library: LibraryStore
     @State private var showDescription = false
-    @State private var showComments = false
     @State private var dragOffset: CGFloat = 0
 
     var body: some View {
         VStack(spacing: 0) {
-            header
-            playerArea
+            VStack(spacing: 0) {
+                header
+                playerArea
+            }
+            .background(Color.black.ignoresSafeArea(edges: .top))
             if let video = player.current {
                 ScrollView {
-                    LazyVStack(alignment: .leading, spacing: 14) {
+                    LazyVStack(alignment: .leading, spacing: 16) {
                         info(video)
                         channelRow(video)
                         actions(video)
-                        descriptionCard
+                        commentsCard
                         if !player.related.isEmpty {
                             ForEach(player.related) { VideoRow(video: $0) }
                         } else if player.details == nil {
-                            ProgressView().frame(maxWidth: .infinity).padding(.top, 20)
+                            ForEach(0..<4, id: \.self) { _ in SkeletonCard(compact: true) }
                         }
                     }
-                    .padding(.horizontal, 12).padding(.vertical, 12)
+                    .padding(.horizontal, 12).padding(.top, 12).padding(.bottom, 24)
                 }
+                .id(video.id)
             } else {
                 Spacer()
             }
         }
         .background(Color(.systemBackground))
         .offset(y: dragOffset)
-        .sheet(isPresented: $showComments) {
+        .sheet(isPresented: Bindable(player).commentsPresented) {
             if let id = player.current?.id {
-                NavigationStack { VideoCommentsView(videoID: id) }.presentationDetents([.medium, .large])
+                NavigationStack { VideoCommentsView(videoID: id) }
+                    .presentationDetents([.fraction(0.65), .large])
+                    .presentationDragIndicator(.visible)
             }
         }
     }
@@ -45,16 +50,16 @@ struct WatchView: View {
     private var header: some View {
         HStack {
             Button { player.expanded = false } label: {
-                Image(systemName: "chevron.down").font(.title3.weight(.semibold)).frame(width: 44, height: 44)
+                Image(systemName: "chevron.down").font(.body.weight(.semibold)).frame(width: 44, height: 36)
             }
             .accessibilityLabel("Minimize")
             Spacer()
             Button { player.close() } label: {
-                Image(systemName: "xmark").font(.body.weight(.semibold)).frame(width: 44, height: 44)
+                Image(systemName: "xmark").font(.body.weight(.semibold)).frame(width: 44, height: 36)
             }
             .accessibilityLabel("Close")
         }
-        .foregroundStyle(.primary)
+        .foregroundStyle(.white)
         .padding(.horizontal, 4)
         .contentShape(Rectangle())
         .gesture(dismissDrag)
@@ -93,11 +98,32 @@ struct WatchView: View {
     }
 
     private func info(_ video: VideoItem) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(video.title).font(.headline).textSelection(.enabled)
-            let meta = [video.views.map(VideoItem.shortViews), video.published].compactMap { $0 }.joined(separator: " · ")
-            if !meta.isEmpty { Text(meta).font(.caption).foregroundStyle(.secondary) }
+        Button { withAnimation(.snappy) { showDescription.toggle() } } label: {
+            VStack(alignment: .leading, spacing: 6) {
+                Text(video.title).font(.title3.weight(.bold)).multilineTextAlignment(.leading)
+                HStack(spacing: 4) {
+                    let meta = [video.views.map(VideoItem.shortViews), video.published].compactMap { $0 }.joined(separator: " · ")
+                    Text(meta).foregroundStyle(.secondary)
+                    if description != nil { Text(showDescription ? "less" : "...more").fontWeight(.semibold) }
+                }
+                .font(.footnote)
+                if showDescription, let description {
+                    Text(description)
+                        .font(.footnote)
+                        .textSelection(.enabled)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(12)
+                        .background(Color(.secondarySystemFill), in: RoundedRectangle(cornerRadius: 12))
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
+        .buttonStyle(.plain)
+    }
+
+    private var description: String? {
+        let text = player.details?.description ?? player.media?.description
+        return text?.isEmpty == false ? text : nil
     }
 
     private func channelRow(_ video: VideoItem) -> some View {
@@ -108,7 +134,7 @@ struct WatchView: View {
                 router.open(.channel(id: id, name: video.channel ?? ""))
             } label: {
                 HStack(spacing: 10) {
-                    ChannelAvatar(name: video.channel)
+                    ChannelAvatar(url: video.channelAvatar, name: video.channel, size: 40)
                     VStack(alignment: .leading, spacing: 1) {
                         Text(video.channel ?? " ").font(.subheadline.weight(.semibold)).lineLimit(1)
                         if let subs = player.details?.channel?.subscribers { Text(subs).font(.caption).foregroundStyle(.secondary) }
@@ -118,12 +144,7 @@ struct WatchView: View {
             .buttonStyle(.plain)
             Spacer()
             if let id = video.channelID {
-                let subscribed = library.isSubscribed(id)
-                Button(subscribed ? "Subscribed" : "Subscribe") { library.toggleSubscription(id: id, name: video.channel ?? "") }
-                    .buttonStyle(.borderedProminent)
-                    .tint(subscribed ? Color(.systemGray4) : .primary)
-                    .foregroundStyle(subscribed ? Color.primary : Color(.systemBackground))
-                    .clipShape(Capsule())
+                SubscribeButton(channelID: id, name: video.channel ?? "", avatar: video.channelAvatar)
             }
         }
     }
@@ -131,14 +152,18 @@ struct WatchView: View {
     private func actions(_ video: VideoItem) -> some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 8) {
+                if let likes = player.details?.likes {
+                    chipLabel(likes, "hand.thumbsup")
+                }
                 let saved = library.snapshot.playlists.first { $0.id == LocalPlaylist.watchLaterID }?.videoIDs.contains(video.id) ?? false
-                chip(saved ? "Saved" : "Watch later", saved ? "clock.fill" : "clock") {
+                chip(saved ? "Saved" : "Save", saved ? "bookmark.fill" : "bookmark") {
                     Task {
                         if saved { await library.perform(.removeFromPlaylist(videoID: video.id, playlistID: LocalPlaylist.watchLaterID)) }
                         else { await library.perform(.addToPlaylist(video: video.reference, playlistID: LocalPlaylist.watchLaterID)) }
                     }
                 }
-                chip("Audio only", player.audioOnly ? "headphones.circle.fill" : "headphones") { player.setAudioOnly(!player.audioOnly) }
+                ShareLink(item: video.watchURL) { chipLabel("Share", "arrowshape.turn.up.right") }
+                chip("Audio", player.audioOnly ? "headphones.circle.fill" : "headphones") { player.setAudioOnly(!player.audioOnly) }
                 if let media = player.media, !media.qualities.isEmpty {
                     Menu {
                         ForEach(media.qualities) { quality in
@@ -148,14 +173,13 @@ struct WatchView: View {
                         }
                     } label: { chipLabel(player.audioOnly ? "Quality" : (player.quality?.label ?? "Quality"), "slider.horizontal.3") }
                 }
-                chip("Comments", "text.bubble") { showComments = true }
-                ShareLink(item: video.watchURL) { chipLabel("Share", "square.and.arrow.up") }
                 if let next = player.upNext {
                     chip("Next", "forward.end") { player.play(next) }
                 }
             }
         }
         .buttonStyle(.plain)
+        .scrollClipDisabled()
     }
 
     private func chip(_ title: String, _ icon: String, action: @escaping () -> Void) -> some View {
@@ -164,25 +188,56 @@ struct WatchView: View {
 
     private func chipLabel(_ title: String, _ icon: String) -> some View {
         Label(title, systemImage: icon)
-            .font(.footnote.weight(.medium))
-            .padding(.horizontal, 12).padding(.vertical, 8)
+            .font(.footnote.weight(.semibold))
+            .padding(.horizontal, 14).padding(.vertical, 9)
             .background(Color(.secondarySystemFill), in: Capsule())
     }
 
-    @ViewBuilder private var descriptionCard: some View {
-        let text = player.details?.description ?? player.media?.description
-        if let text, !text.isEmpty {
-            Button { withAnimation(.snappy) { showDescription.toggle() } } label: {
-                Text(text)
-                    .font(.footnote)
-                    .lineLimit(showDescription ? nil : 3)
-                    .multilineTextAlignment(.leading)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(12)
-                    .background(Color(.secondarySystemFill), in: RoundedRectangle(cornerRadius: 12))
+    @ViewBuilder private var commentsCard: some View {
+        if let comment = player.commentPreview {
+            Button { player.commentsPresented = true } label: {
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack(spacing: 6) {
+                        Text("Comments").font(.subheadline.weight(.bold))
+                        if let count = player.commentCount?.components(separatedBy: " ").first { Text(count).font(.subheadline).foregroundStyle(.secondary) }
+                        Spacer()
+                        Image(systemName: "chevron.up.chevron.down").font(.caption).foregroundStyle(.secondary)
+                    }
+                    HStack(alignment: .top, spacing: 8) {
+                        ChannelAvatar(url: comment.avatar, name: comment.author, size: 24)
+                        Text(comment.text).font(.footnote).lineLimit(2).multilineTextAlignment(.leading)
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(12)
+                .background(Color(.secondarySystemFill), in: RoundedRectangle(cornerRadius: 12))
             }
             .buttonStyle(.plain)
         }
+    }
+}
+
+struct SubscribeButton: View {
+    @EnvironmentObject private var library: LibraryStore
+    let channelID: String
+    let name: String
+    var avatar: URL?
+    var fullWidth = false
+
+    var body: some View {
+        let subscribed = library.isSubscribed(channelID)
+        Button {
+            library.toggleSubscription(id: channelID, name: name, avatar: avatar)
+        } label: {
+            Text(subscribed ? "Subscribed" : "Subscribe")
+                .font(.subheadline.weight(.semibold))
+                .frame(maxWidth: fullWidth ? .infinity : nil)
+                .padding(.horizontal, 16).padding(.vertical, fullWidth ? 11 : 9)
+                .foregroundStyle(subscribed ? Color.primary : Color(.systemBackground))
+                .background(subscribed ? Color(.secondarySystemFill) : Color.primary, in: Capsule())
+        }
+        .buttonStyle(.plain)
+        .sensoryFeedback(.selection, trigger: subscribed)
     }
 }
 

@@ -13,7 +13,7 @@ struct HomeView: View {
                 if !model.topics.isEmpty { topicBar }
                 if model.topic == nil, !model.continueWatching.isEmpty { continueShelf }
                 if model.items.isEmpty, model.loading {
-                    ProgressView().frame(maxWidth: .infinity).padding(.top, 80)
+                    ForEach(0..<3, id: \.self) { _ in SkeletonCard() }
                 } else if model.items.isEmpty, let error = model.error {
                     ErrorRow(message: error) { reload() }
                 }

@@ -5,6 +5,7 @@ import SwiftUI
 @MainActor @Observable final class ChannelModel {
     let channelID: String
     private(set) var title: String
+    private(set) var header: ChannelHeader?
     private(set) var tabs: [ChannelTab] = []
     private(set) var selected: String? = ChannelUploads.videosTab
     private(set) var items: [VideoItem] = []
@@ -25,11 +26,14 @@ import SwiftUI
                 let page = try await ChannelBrowseClient().browse(channelID: id, params: token == nil ? params : nil, continuation: token)
                 guard !Task.isCancelled else { return }
                 if let name = page.title, !name.isEmpty { self.title = name }
-                if !page.tabs.isEmpty { self.tabs = page.tabs.filter { ["Videos", "Shorts", "Live", "Home"].contains($0.title) } }
+                if let header = page.header { self.header = header }
+                if !page.tabs.isEmpty { self.tabs = page.tabs.filter { ["Videos", "Shorts", "Live"].contains($0.title) } }
+                let avatar = self.header?.avatar
                 let new = page.feed.items.map { item -> VideoItem in
                     var item = item
                     item.channel = item.channel ?? page.title ?? fallback
                     item.channelID = item.channelID ?? id
+                    item.channelAvatar = item.channelAvatar ?? avatar
                     return item
                 }.filter { item in !self.items.contains { $0.id == item.id } }
                 cache.remember(new)
@@ -43,41 +47,48 @@ import SwiftUI
         }
     }
 
-    func select(_ tab: ChannelTab, cache: MetadataCache) {
-        selected = tab.params
+    func select(_ params: String?, cache: MetadataCache) {
+        guard params != selected else { return }
+        selected = params
         load(cache: cache)
     }
+
+    var isShortsTab: Bool { tabs.first { $0.params == selected }?.title == "Shorts" }
 }
 
 struct ChannelView: View {
     @Environment(MetadataCache.self) private var cache
-    @EnvironmentObject private var library: LibraryStore
+    @Environment(PlayerModel.self) private var player
     @State private var model: ChannelModel
+    @State private var expandedAbout = false
 
     init(channelID: String, name: String) { _model = State(initialValue: ChannelModel(channelID: channelID, title: name)) }
 
     var body: some View {
         ScrollView {
-            LazyVStack(alignment: .leading, spacing: 18) {
+            LazyVStack(alignment: .leading, spacing: 18, pinnedViews: [.sectionHeaders]) {
                 header
-                if !model.tabs.isEmpty {
-                    Picker("Tab", selection: Binding(get: { model.selected }, set: { value in
-                        if let tab = model.tabs.first(where: { $0.params == value }) { model.select(tab, cache: cache) }
-                    })) {
-                        ForEach(model.tabs) { Text($0.title).tag(Optional($0.params)) }
+                Section {
+                    if model.isShortsTab {
+                        shortsGrid
+                    } else {
+                        ForEach(model.items) { video in
+                            VideoCard(video: video)
+                                .onAppear { if video.id == model.items.last?.id { model.load(more: true, cache: cache) } }
+                        }
                     }
-                    .pickerStyle(.segmented)
-                    .padding(.horizontal, 12)
+                    if model.loading {
+                        if model.items.isEmpty { ForEach(0..<2, id: \.self) { _ in SkeletonCard() } } else { ProgressView().frame(maxWidth: .infinity) }
+                    } else if let error = model.error {
+                        ErrorRow(message: error) { model.load(cache: cache) }
+                    } else if model.items.isEmpty {
+                        Text("No videos").foregroundStyle(.secondary).frame(maxWidth: .infinity).padding(.top, 40)
+                    }
+                } header: {
+                    if model.tabs.count > 1 { tabBar }
                 }
-                ForEach(model.items) { video in
-                    VideoRow(video: video)
-                        .padding(.horizontal, 12)
-                        .onAppear { if video.id == model.items.last?.id { model.load(more: true, cache: cache) } }
-                }
-                if model.loading { ProgressView().frame(maxWidth: .infinity) }
-                else if let error = model.error { ErrorRow(message: error) { model.load(cache: cache) } }
             }
-            .padding(.vertical, 12)
+            .padding(.bottom, 12)
         }
         .navigationTitle(model.title)
         .navigationBarTitleDisplayMode(.inline)
@@ -85,19 +96,74 @@ struct ChannelView: View {
     }
 
     private var header: some View {
-        HStack(spacing: 14) {
-            ChannelAvatar(name: model.title, size: 64)
-            VStack(alignment: .leading, spacing: 8) {
-                Text(model.title).font(.title2.weight(.bold)).lineLimit(2)
-                let subscribed = library.isSubscribed(model.channelID)
-                Button(subscribed ? "Subscribed" : "Subscribe") { library.toggleSubscription(id: model.channelID, name: model.title) }
-                    .buttonStyle(.borderedProminent)
-                    .tint(subscribed ? Color(.systemGray4) : .primary)
-                    .foregroundStyle(subscribed ? Color.primary : Color(.systemBackground))
-                    .clipShape(Capsule())
+        VStack(alignment: .leading, spacing: 14) {
+            if let banner = model.header?.banner {
+                Color(.secondarySystemFill)
+                    .aspectRatio(6.2, contentMode: .fit)
+                    .overlay { AsyncImage(url: banner) { $0.image?.resizable().scaledToFill() } }
+                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                    .padding(.horizontal, 12)
+            }
+            HStack(alignment: .center, spacing: 14) {
+                ChannelAvatar(url: model.header?.avatar, name: model.title, size: 72)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(model.title).font(.title2.weight(.bold)).lineLimit(2)
+                    if let handle = model.header?.handle { Text(handle).font(.footnote.weight(.medium)) }
+                    let stats = [model.header?.subscribers, model.header?.videoCount].compactMap { $0 }.joined(separator: " · ")
+                    if !stats.isEmpty { Text(stats).font(.footnote).foregroundStyle(.secondary) }
+                }
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 12)
+            if let about = model.header?.description, !about.isEmpty {
+                Button { withAnimation(.snappy) { expandedAbout.toggle() } } label: {
+                    Text(about).font(.footnote).foregroundStyle(.secondary).lineLimit(expandedAbout ? nil : 2).multilineTextAlignment(.leading)
+                }
+                .buttonStyle(.plain)
+                .padding(.horizontal, 12)
+            }
+            SubscribeButton(channelID: model.channelID, name: model.title, avatar: model.header?.avatar, fullWidth: true)
+                .padding(.horizontal, 12)
+        }
+    }
+
+    private var tabBar: some View {
+        HStack(spacing: 24) {
+            ForEach(model.tabs) { tab in
+                let selected = tab.params == model.selected
+                Button { model.select(tab.params, cache: cache) } label: {
+                    VStack(spacing: 8) {
+                        Text(tab.title).font(.subheadline.weight(.semibold)).foregroundStyle(selected ? .primary : .secondary)
+                        Rectangle().fill(selected ? Color.primary : .clear).frame(height: 2)
+                    }
+                    .fixedSize(horizontal: true, vertical: false)
+                }
+                .buttonStyle(.plain)
             }
             Spacer()
         }
-        .padding(.horizontal, 12)
+        .padding(.horizontal, 12).padding(.top, 8)
+        .background(.bar)
+        .overlay(alignment: .bottom) { Divider() }
+    }
+
+    private var shortsGrid: some View {
+        LazyVGrid(columns: [GridItem(.flexible(), spacing: 4), GridItem(.flexible(), spacing: 4), GridItem(.flexible(), spacing: 4)], spacing: 4) {
+            ForEach(model.items) { video in
+                Button { player.play(video) } label: {
+                    Color(.secondarySystemFill)
+                        .aspectRatio(9 / 16, contentMode: .fit)
+                        .overlay { AsyncImage(url: URL(string: "https://i.ytimg.com/vi/\(video.id)/oar2.jpg")) { $0.image?.resizable().scaledToFill() } }
+                        .overlay(alignment: .bottomLeading) {
+                            Text(video.title).font(.caption2.weight(.semibold)).foregroundStyle(.white).lineLimit(2)
+                                .padding(6).shadow(radius: 3)
+                        }
+                        .clipped()
+                }
+                .buttonStyle(.plain)
+                .onAppear { if video.id == model.items.last?.id { model.load(more: true, cache: cache) } }
+            }
+        }
+        .padding(.horizontal, 4)
     }
 }

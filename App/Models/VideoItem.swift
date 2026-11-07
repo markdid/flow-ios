@@ -11,9 +11,11 @@ struct VideoItem: Identifiable, Hashable, Codable, Sendable {
     var views: String?
     var published: String?
     var isShort: Bool = false
+    var channelAvatar: URL?
 
     var thumbnail: URL { URL(string: "https://i.ytimg.com/vi/\(id)/hqdefault.jpg")! }
     var largeThumbnail: URL { URL(string: "https://i.ytimg.com/vi/\(id)/maxresdefault.jpg")! }
+    var isLive: Bool { duration == nil && (views?.lowercased().contains("watching") ?? false) }
     var watchURL: URL { URL(string: "https://www.youtube.com/watch?v=\(id)")! }
     var reference: VideoReference {
         (try? VideoReference(url: watchURL, title: title)) ?? (try! VideoReference(url: watchURL))
@@ -23,15 +25,16 @@ struct VideoItem: Identifiable, Hashable, Codable, Sendable {
     }
 
     init(id: String, title: String, channel: String? = nil, channelID: String? = nil, duration: String? = nil,
-         views: String? = nil, published: String? = nil, isShort: Bool = false) {
+         views: String? = nil, published: String? = nil, isShort: Bool = false, channelAvatar: URL? = nil) {
         self.id = id; self.title = title; self.channel = channel; self.channelID = channelID
         self.duration = duration; self.views = views; self.published = published; self.isShort = isShort
+        self.channelAvatar = channelAvatar
     }
 
     init(_ reference: VideoReference, _ presentation: VideoPresentation?) {
         self.init(id: reference.id, title: reference.title, channel: presentation?.channel, channelID: presentation?.channelID,
                   duration: presentation?.duration, views: presentation?.views, published: presentation?.published,
-                  isShort: presentation?.isShort ?? false)
+                  isShort: presentation?.isShort ?? false, channelAvatar: presentation?.channelAvatar)
     }
 
     /// Fills missing fields from another copy of the same video.
@@ -43,6 +46,7 @@ struct VideoItem: Identifiable, Hashable, Codable, Sendable {
         result.duration = result.duration ?? other.duration
         result.views = result.views ?? other.views
         result.published = result.published ?? other.published
+        result.channelAvatar = result.channelAvatar ?? other.channelAvatar
         return result
     }
 

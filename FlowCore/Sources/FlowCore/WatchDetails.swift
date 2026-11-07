@@ -7,7 +7,7 @@ import FoundationNetworking
 #endif
 
 public struct WatchFact: Equatable, Sendable { public let value: String; public let label: String }
-public struct WatchChannel: Equatable, Sendable { public let name: String; public let id: String?; public let subscribers: String? }
+public struct WatchChannel: Equatable, Sendable { public let name: String; public let id: String?; public let subscribers: String?; public var avatar: URL? = nil }
 public struct WatchDetails: Sendable {
     public let title: String?
     public let description: String?
@@ -19,6 +19,7 @@ public struct WatchDetails: Sendable {
     public let relatedNotice: String?
     public var relatedPresentation: [String: VideoPresentation] = [:]
     public var relatedContinuation: String?
+    public var likes: String?
 }
 public enum WatchDetailsParser {
     private typealias Object = [String: Any]
@@ -29,6 +30,20 @@ public enum WatchDetailsParser {
         guard let object = value as? Object else { return nil }
         if let value = object["content"] as? String ?? object["simpleText"] as? String { return value }
         if object["runs"] is [Any] { return objects(object["runs"]).compactMap { $0["text"] as? String }.joined() }
+        return nil
+    }
+    private static func findLikes(_ value: Any?, depth: Int = 0) -> String? {
+        guard depth < 24 else { return nil }
+        if let object = value as? Object {
+            if let model = object["likeButtonViewModel"] as? Object {
+                let title = path(model, "likeButtonViewModel", "toggleButtonViewModel", "toggleButtonViewModel", "defaultButtonViewModel", "buttonViewModel", "title") as? String
+                    ?? path(model, "toggleButtonViewModel", "toggleButtonViewModel", "defaultButtonViewModel", "buttonViewModel", "title") as? String
+                if let title, !title.isEmpty, title.first?.isNumber == true { return title }
+            }
+            for child in object.values { if let found = findLikes(child, depth: depth + 1) { return found } }
+        } else if let array = value as? [Any] {
+            for child in array { if let found = findLikes(child, depth: depth + 1) { return found } }
+        }
         return nil
     }
     public static func parse(_ data: Data) throws -> WatchDetails {
@@ -54,6 +69,13 @@ public enum WatchDetailsParser {
             let id = path(owner, "navigationEndpoint", "browseEndpoint", "browseId") as? String
             channel = WatchChannel(name: name, id: id.flatMap { ChannelBrowseClient.validChannelID($0) ? $0 : nil }, subscribers: text(owner["subscriberCountText"]))
         }
+        if let owner = path(secondary, "owner", "videoOwnerRenderer") as? Object, channel != nil {
+            channel?.avatar = VideoSearchParser.largest(objects(path(owner, "thumbnail", "thumbnails")))
+            if channel?.subscribers == nil, let subs = text(owner["subscriberCountText"]), let current = channel {
+                channel = WatchChannel(name: current.name, id: current.id, subscribers: subs, avatar: current.avatar)
+            }
+        }
+        let likes = findLikes(primary)
         let facts = items.flatMap { objects(path($0, "videoDescriptionHeaderRenderer", "factoid")) }.compactMap { wrapper -> WatchFact? in
             let renderer = wrapper["factoidRenderer"] as? Object ?? wrapper.keys.sorted().compactMap { path(wrapper[$0], "factoid", "factoidRenderer") as? Object }.first
             guard let renderer, let value = text(renderer["value"]), !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
@@ -90,7 +112,7 @@ public enum WatchDetailsParser {
         guard primary != nil || secondary != nil || !items.isEmpty || rawRelated != nil else { throw SearchError.unsupportedResponse }
         return WatchDetails(title: text(primary?["title"]), description: description,
             views: text(path(primary, "viewCount", "videoViewCountRenderer", "viewCount")), published: text(primary?["dateText"]),
-            facts: facts, channel: channel, related: related, relatedNotice: notice, relatedPresentation: relatedPresentation)
+            facts: facts, channel: channel, related: related, relatedNotice: notice, relatedPresentation: relatedPresentation, likes: likes)
     }
 }
 public struct WatchDetailsClient {

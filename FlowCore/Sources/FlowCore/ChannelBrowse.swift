@@ -12,12 +12,21 @@ public struct ChannelTab: Identifiable, Sendable {
     public let params: String?
     public let selected: Bool
 }
+public struct ChannelHeader: Sendable {
+    public let avatar: URL?
+    public let banner: URL?
+    public let handle: String?
+    public let subscribers: String?
+    public let videoCount: String?
+    public let description: String?
+}
 public struct ChannelBrowsePage: Sendable {
     public let channelID: String
     public let title: String?
     public let tabs: [ChannelTab]
     public let notice: String?
     public let feed: VideoSearchPage
+    public var header: ChannelHeader?
 }
 public enum ChannelBrowseParser {
     private typealias Object = [String: Any]
@@ -74,9 +83,25 @@ public enum ChannelBrowseParser {
             feed = VideoSearchPage(videos: [], continuation: nil, filterGroups: [], presentation: [:])
             notice = SearchError.noSupportedVideos.localizedDescription
         }
-        return ChannelBrowsePage(channelID: channelID, title: metadata?["title"] as? String, tabs: tabs, notice: notice, feed: feed)
+        var page = ChannelBrowsePage(channelID: channelID, title: metadata?["title"] as? String, tabs: tabs, notice: notice, feed: feed)
+        page.header = header(root)
+        return page
     }
     private static func objects(_ value: Any?) -> [Object] { (value as? [Any] ?? []).compactMap { $0 as? Object } }
+    private static func path(_ value: Any?, _ keys: String...) -> Any? { keys.reduce(value) { ($0 as? Object)?[$1] } }
+    private static func header(_ root: Object) -> ChannelHeader? {
+        guard let model = path(root, "header", "pageHeaderRenderer", "content", "pageHeaderViewModel") as? Object else { return nil }
+        let avatar = VideoSearchParser.largest(objects(path(model, "image", "decoratedAvatarViewModel", "avatar", "avatarViewModel", "image", "sources")))
+        let bannerSources = objects(path(model, "banner", "imageBannerViewModel", "image", "sources"))
+        let banner = VideoSearchParser.largest(bannerSources.filter { ($0["width"] as? Int ?? 0) <= 1707 })
+        let parts = objects(path(model, "metadata", "contentMetadataViewModel", "metadataRows"))
+            .flatMap { objects($0["metadataParts"]) }.compactMap { path($0, "text", "content") as? String }
+        return ChannelHeader(avatar: avatar, banner: banner,
+            handle: parts.first { $0.hasPrefix("@") },
+            subscribers: parts.first { $0.contains("subscriber") },
+            videoCount: parts.first { $0.contains("video") },
+            description: path(model, "description", "descriptionPreviewViewModel", "description", "content") as? String)
+    }
 }
 
 public struct ChannelBrowseClient {

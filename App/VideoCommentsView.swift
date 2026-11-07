@@ -64,39 +64,67 @@ struct VideoCommentsView: View {
     init(videoID: String, repliesToken: String? = nil) { _model = StateObject(wrappedValue: VideoCommentsModel(videoID: videoID, repliesToken: repliesToken)) }
     var body: some View {
         List {
-            Section {
-                if let total = model.totalText { Text(total) }
-                if !model.sorts.isEmpty && !model.replies {
-                    Menu("Sort") {
-                        ForEach(model.sorts) { option in Button(option.title) { model.select(option) }.disabled(option.token == model.selectedSort) }
+            ForEach(model.comments) { comment in
+                CommentRow(comment: comment, videoID: model.videoID)
+                    .listRowInsets(EdgeInsets(top: 10, leading: 16, bottom: 10, trailing: 16))
+                    .onAppear { if comment.id == model.comments.last?.id, model.continuation != nil { model.load(more: true) } }
+            }
+            if model.busy {
+                ProgressView().frame(maxWidth: .infinity).listRowSeparator(.hidden)
+            } else if let error = model.error {
+                ErrorRow(message: error) { model.load(more: model.continuation != nil) }.listRowSeparator(.hidden)
+            } else if model.loaded && model.comments.isEmpty {
+                Text("No comments").foregroundStyle(.secondary).frame(maxWidth: .infinity).listRowSeparator(.hidden)
+            }
+        }
+        .listStyle(.plain)
+        .navigationTitle(model.replies ? "Replies" : "Comments")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            if !model.sorts.isEmpty && !model.replies {
+                Menu {
+                    ForEach(model.sorts) { option in
+                        Button { model.select(option) } label: {
+                            if option.token == model.selectedSort { Label(option.title, systemImage: "checkmark") } else { Text(option.title) }
+                        }
+                    }
+                } label: { Image(systemName: "line.3.horizontal.decrease") }
+                .accessibilityLabel("Sort")
+            }
+        }
+        .task { if !model.loaded { model.load() } }
+        .onDisappear { model.cancel() }
+    }
+}
+
+struct CommentRow: View {
+    let comment: VideoComment
+    let videoID: String
+    var body: some View {
+        HStack(alignment: .top, spacing: 10) {
+            ChannelAvatar(url: comment.avatar, name: comment.author, size: 32)
+            VStack(alignment: .leading, spacing: 5) {
+                HStack(spacing: 4) {
+                    if comment.pinned { Image(systemName: "pin.fill").font(.caption2).foregroundStyle(.secondary).accessibilityLabel("Pinned") }
+                    Text(comment.author.isEmpty ? "Unknown" : comment.author)
+                        .font(.caption.weight(.semibold))
+                        .padding(.horizontal, comment.isCreator ? 6 : 0).padding(.vertical, comment.isCreator ? 2 : 0)
+                        .background(comment.isCreator ? Color(.tertiarySystemFill) : .clear, in: Capsule())
+                    if let time = comment.published { Text("· " + time).font(.caption).foregroundStyle(.secondary) }
+                }
+                Text(comment.text).font(.subheadline).textSelection(.enabled)
+                HStack(spacing: 16) {
+                    Label(comment.likes?.isEmpty == false ? comment.likes! : "0", systemImage: "hand.thumbsup")
+                    if comment.hearted { Image(systemName: "heart.fill").foregroundStyle(.red).accessibilityLabel("Hearted by creator") }
+                }
+                .font(.caption).foregroundStyle(.secondary)
+                if let token = comment.repliesToken {
+                    NavigationLink { VideoCommentsView(videoID: videoID, repliesToken: token) } label: {
+                        Text(comment.replyCount.map { "\($0) \($0 == "1" ? "reply" : "replies")" } ?? "Replies")
+                            .font(.caption.weight(.semibold)).foregroundStyle(.tint)
                     }
                 }
             }
-            ForEach(model.comments) { comment in
-                VStack(alignment: .leading, spacing: 6) {
-                    HStack {
-                        Text(comment.author.isEmpty ? "Unknown" : comment.author).font(.subheadline.weight(.semibold))
-                        if comment.pinned { Image(systemName: "pin.fill").accessibilityLabel("Pinned") }
-                    }
-                    Text(comment.text).textSelection(.enabled)
-                    HStack {
-                        if let time = comment.published { Text(time) }
-                        if let likes = comment.likes, !likes.isEmpty { Label(likes, systemImage: "hand.thumbsup") }
-                    }.font(.caption).foregroundStyle(.secondary)
-                    if let token = comment.repliesToken {
-                        NavigationLink("View replies") { VideoCommentsView(videoID: model.videoID, repliesToken: token) }
-                    }
-                }.padding(.vertical, 4)
-            }
-            if let error = model.error { Text(error).foregroundStyle(.red) }
-            if model.busy { ProgressView().frame(maxWidth: .infinity) }
-            else {
-                if model.loaded && model.comments.isEmpty { Text("No comments") }
-                if model.error != nil { Button("Retry") { model.load(more: model.continuation != nil) } }
-                else if model.continuation != nil { Button("Load more") { model.load(more: true) } }
-            }
-        }.listStyle(.plain).navigationTitle(model.replies ? "Replies" : "Comments")
-            .task { if !model.loaded { model.load() } }
-            .onDisappear { model.cancel() }
+        }
     }
 }

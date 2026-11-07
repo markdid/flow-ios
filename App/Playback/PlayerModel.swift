@@ -28,7 +28,10 @@ enum Settings {
     private(set) var audioOnly = false
     private(set) var history: [VideoItem] = []
     private(set) var lastSkipped: SponsorSegment?
+    private(set) var commentPreview: VideoComment?
+    private(set) var commentCount: String?
     var expanded = false
+    var commentsPresented = false
 
     @ObservationIgnored private var library: LibraryStore?
     @ObservationIgnored private var cache: MetadataCache?
@@ -85,6 +88,7 @@ enum Settings {
         let video = cache?.items[video.id].map { video.merged(with: $0) } ?? video
         current = video
         details = nil; related = []; media = nil; quality = nil; duration = 0; position = 0; lastSkipped = nil
+        commentPreview = nil; commentCount = nil
         sponsor = SponsorSkipSession(segments: [])
         if expand { expanded = true }
         player.replaceCurrentItem(with: nil)
@@ -104,6 +108,7 @@ enum Settings {
         let audioOnly = audioOnly
         loadTask = Task { [weak self] in
             async let detailsResult = try? WatchDetailsClient().details(videoID: video.id)
+            async let comments = try? VideoCommentsClient().first(videoID: video.id)
             async let segments = UserDefaults.standard.bool(forKey: Settings.sponsorBlockKey)
                 ? ((try? await SponsorBlockClient().fetch(videoID: video.id)) ?? []) : []
             do {
@@ -123,6 +128,10 @@ enum Settings {
             guard let self, !Task.isCancelled, generation == self.generation else { return }
             self.sponsor = SponsorSkipSession(segments: fetched.filter { Self.autoSkipCategories.contains($0.category) })
             if let details { self.apply(details, to: video) }
+            let page = await comments
+            guard !Task.isCancelled, generation == self.generation else { return }
+            self.commentPreview = page?.comments.first
+            self.commentCount = page?.totalText
         }
     }
 
@@ -135,6 +144,7 @@ enum Settings {
         updated.channelID = details.channel?.id ?? updated.channelID
         updated.views = details.views ?? updated.views
         updated.published = details.published ?? updated.published
+        updated.channelAvatar = details.channel?.avatar ?? updated.channelAvatar
         current = updated
         cache?.remember([updated] + related)
         updateNowPlaying()
