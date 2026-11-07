@@ -61,6 +61,7 @@ enum Settings {
         }
         observations.append(player.observe(\.timeControlStatus, options: [.new]) { [weak self] player, _ in
             let playing = player.timeControlStatus != .paused
+            print("[player] timeControl=\(player.timeControlStatus.rawValue) waiting=\(player.reasonForWaitingToPlay?.rawValue ?? "-") t=\(String(format: "%.1f", player.currentTime().seconds))")
             Task { @MainActor in self?.isPlaying = playing; self?.updateNowPlaying() }
         })
         NotificationCenter.default.addObserver(forName: AVPlayerItem.didPlayToEndTimeNotification, object: nil, queue: .main) { [weak self] note in
@@ -124,10 +125,10 @@ enum Settings {
                 let media = try await StreamResolver.resolve(videoID: video.id)
                 log("resolved qualities=\(media.qualities.map { "\($0.height)\($0.codec)" }) audio=\(media.audioURL != nil) muxed=\(media.muxedURL != nil) hls=\(media.hlsURL != nil)")
                 let quality = StreamResolver.pick(media.qualities, preferred: preferred)
-                let item = try await StreamResolver.makeItem(media: media, quality: quality, audioOnly: audioOnly)
-                log("item built quality=\(quality?.label ?? "-") \(quality?.codec ?? "")")
+                let (item, used) = try await StreamResolver.makeItem(media: media, quality: quality, audioOnly: audioOnly)
+                log("item built quality=\(used?.label ?? "combined") \(used?.codec ?? "")")
                 guard let self, !Task.isCancelled, generation == self.generation else { return }
-                self.media = media; self.quality = quality
+                self.media = media; self.quality = used
                 self.start(item, at: resume)
                 self.watchSession = await self.library?.beginWatch(videoID: video.id)
             } catch {
@@ -225,8 +226,9 @@ enum Settings {
         generation += 1
         let generation = generation
         loadTask = Task { [weak self] in
-            guard let item = try? await StreamResolver.makeItem(media: media, quality: quality, audioOnly: audioOnly),
+            guard let (item, used) = try? await StreamResolver.makeItem(media: media, quality: quality, audioOnly: audioOnly),
                   let self, generation == self.generation else { return }
+            if !audioOnly { self.quality = used }
             self.start(item, at: at)
             if !wasPlaying { self.player.pause() }
         }
@@ -260,8 +262,14 @@ enum Settings {
 
     // MARK: Ticks
 
+    @ObservationIgnored private var lastLoggedSecond = -10.0
     private func tick(_ seconds: Double) {
         guard seconds.isFinite, current != nil else { return }
+        if abs(seconds - lastLoggedSecond) >= 5 {
+            lastLoggedSecond = seconds
+            let item = player.currentItem
+            print("[tick] t=\(Int(seconds)) rate=\(player.rate) buffered=\(item?.loadedTimeRanges.last.map { Int(CMTimeRangeGetEnd($0.timeRangeValue).seconds) } ?? -1) likelyToKeepUp=\(item?.isPlaybackLikelyToKeepUp ?? false) err=\(item?.errorLog()?.events.last.map { "\($0.errorStatusCode) \($0.errorComment ?? "")" } ?? "-")")
+        }
         position = seconds
         if let itemDuration = player.currentItem?.duration.seconds, itemDuration.isFinite, itemDuration > 0 { duration = itemDuration }
         if let segment = sponsor.automaticTarget(at: seconds, isPlaying: isPlaying, duration: duration > 0 ? duration : nil) {

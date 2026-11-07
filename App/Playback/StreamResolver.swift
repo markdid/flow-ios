@@ -79,29 +79,45 @@ enum StreamResolver {
     }
 
     /// Builds a player item, combining separate DASH video and audio tracks when needed.
-    static func makeItem(media: ResolvedMedia, quality: StreamQuality?, audioOnly: Bool) async throws -> AVPlayerItem {
-        if let hls = media.hlsURL { return AVPlayerItem(url: hls) }
-        if audioOnly, let audio = media.audioURL { return AVPlayerItem(url: audio) }
+    /// Returns the item and the quality actually used (nil for the combined fallback stream).
+    static func makeItem(media: ResolvedMedia, quality: StreamQuality?, audioOnly: Bool) async throws -> (AVPlayerItem, StreamQuality?) {
+        if let hls = media.hlsURL { return (AVPlayerItem(url: hls), nil) }
+        if audioOnly, let audio = media.audioURL { return (AVPlayerItem(url: audio), nil) }
         if let quality, let audioURL = media.audioURL {
             do {
-                return try await withTimeout(seconds: 15) { try await composed(video: quality.url, audio: audioURL) }
+                // Composing can take tens of seconds on long videos; start the combined stream instead.
+                return (try await race(seconds: 6) { try await composed(video: quality.url, audio: audioURL) }, quality)
             } catch {
-                if let muxed = media.muxedURL { return AVPlayerItem(url: muxed) }
+                print("[resolver] composed item unavailable (\(error)); using combined stream")
+                if let muxed = media.muxedURL { return (AVPlayerItem(url: muxed), nil) }
                 throw error
             }
         }
-        if let muxed = media.muxedURL { return AVPlayerItem(url: muxed) }
-        if let audio = media.audioURL { return AVPlayerItem(url: audio) }
+        if let muxed = media.muxedURL { return (AVPlayerItem(url: muxed), nil) }
+        if let audio = media.audioURL { return (AVPlayerItem(url: audio), nil) }
         throw StreamResolverError.noPlayableStream
     }
 
-    private static func withTimeout<T: Sendable>(seconds: Double, _ work: @escaping @Sendable () async throws -> T) async throws -> T {
-        try await withThrowingTaskGroup(of: T.self) { group in
-            group.addTask { try await work() }
-            group.addTask { try await Task.sleep(for: .seconds(seconds)); throw StreamResolverError.timedOut }
-            defer { group.cancelAll() }
-            return try await group.next()!
+    /// Returns the work's result, or throws `.timedOut` after `seconds` without waiting for
+    /// the work to finish (AVFoundation loading ignores cancellation).
+    private static func race<T: Sendable>(seconds: Double, _ work: @escaping @Sendable () async throws -> T) async throws -> T {
+        let once = Once()
+        return try await withCheckedThrowingContinuation { continuation in
+            Task {
+                do { let value = try await work(); if once.claim() { continuation.resume(returning: value) } }
+                catch { if once.claim() { continuation.resume(throwing: error) } }
+            }
+            Task {
+                try? await Task.sleep(for: .seconds(seconds))
+                if once.claim() { continuation.resume(throwing: StreamResolverError.timedOut) }
+            }
         }
+    }
+
+    private final class Once: @unchecked Sendable {
+        private let lock = NSLock()
+        private var claimed = false
+        func claim() -> Bool { lock.lock(); defer { lock.unlock() }; if claimed { return false }; claimed = true; return true }
     }
 
     private static func composed(video: URL, audio: URL) async throws -> AVPlayerItem {
