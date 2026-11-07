@@ -22,6 +22,7 @@ settings:
     CURRENT_PROJECT_VERSION: 1
     MARKETING_VERSION: 0.1.0
     TARGETED_DEVICE_FAMILY: '1,2'
+    ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
 targets:
   FlowPrototype:
     type: application

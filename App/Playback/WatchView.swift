@@ -16,6 +16,7 @@ struct WatchView: View {
                     Color.clear.frame(height: proxy.safeAreaInsets.top)
                     header
                     playerArea
+                    SegmentStrip()
                 }
                 .background(Color.black)
                 .gesture(headerDrag)
@@ -93,6 +94,7 @@ struct WatchView: View {
                 EmptyView()
             }
         }
+        .overlay(alignment: .bottomTrailing) { SkipOverlay() }
         .aspectRatio(16 / 9, contentMode: .fit)
     }
 

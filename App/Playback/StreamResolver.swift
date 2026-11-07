@@ -21,8 +21,14 @@ struct ResolvedMedia: Sendable {
 }
 
 enum StreamResolverError: LocalizedError {
-    case noPlayableStream
-    var errorDescription: String? { "No playable stream" }
+    case noPlayableStream, blocked, timedOut
+    var errorDescription: String? {
+        switch self {
+        case .noPlayableStream: return "No playable stream"
+        case .blocked: return "YouTube refused this video's streams"
+        case .timedOut: return "Video took too long to load"
+        }
+    }
 }
 
 enum StreamResolver {
@@ -30,10 +36,15 @@ enum StreamResolver {
     static func resolve(videoID: String) async throws -> ResolvedMedia {
         let youtube = YouTube(videoID: videoID, methods: [.local])
         let description = try? await youtube.metadata?.description
-        if let live = try? await youtube.livestreams.first(where: { $0.streamType == .hls }) {
-            return ResolvedMedia(videoID: videoID, qualities: [], audioURL: nil, muxedURL: nil, hlsURL: live.url, description: description)
+        // YouTube can attach an HLS manifest to ordinary videos. Those manifests stall without
+        // tokens we don't send, so HLS is only used when there are no direct streams (live).
+        let streams = (try? await youtube.streams) ?? []
+        if streams.isEmpty {
+            if let live = try? await youtube.livestreams.first(where: { $0.streamType == .hls }) {
+                return ResolvedMedia(videoID: videoID, qualities: [], audioURL: nil, muxedURL: nil, hlsURL: live.url, description: description)
+            }
+            throw StreamResolverError.noPlayableStream
         }
-        let streams = try await youtube.streams
         let audio = streams.filterAudioOnly().filter { $0.isNativelyPlayable && $0.fileExtension == .m4a }
             .max { ($0.bitrate ?? 0) < ($1.bitrate ?? 0) }
         var byHeight: [Int: (YouTubeKit.Stream, Int)] = [:]
@@ -49,7 +60,17 @@ enum StreamResolver {
         let muxed = streams.filter { $0.includesVideoAndAudioTrack && $0.isNativelyPlayable }
             .max { ($0.videoResolution ?? 0) < ($1.videoResolution ?? 0) }
         guard (audio != nil && !qualities.isEmpty) || muxed != nil || audio != nil else { throw StreamResolverError.noPlayableStream }
+        // The player waits indefinitely on a refused stream, so check one byte first.
+        if let probe = audio?.url ?? muxed?.url, !(await reachable(probe)) { throw StreamResolverError.blocked }
         return ResolvedMedia(videoID: videoID, qualities: qualities, audioURL: audio?.url, muxedURL: muxed?.url, hlsURL: nil, description: description)
+    }
+
+    static func reachable(_ url: URL) async -> Bool {
+        var request = URLRequest(url: url, timeoutInterval: 8)
+        request.setValue("bytes=0-1", forHTTPHeaderField: "Range")
+        guard let (_, response) = try? await URLSession.shared.data(for: request),
+              let http = response as? HTTPURLResponse else { return false }
+        return (200..<300).contains(http.statusCode)
     }
 
     /// Picks the best quality at or below the preferred height.
@@ -63,7 +84,7 @@ enum StreamResolver {
         if audioOnly, let audio = media.audioURL { return AVPlayerItem(url: audio) }
         if let quality, let audioURL = media.audioURL {
             do {
-                return try await composed(video: quality.url, audio: audioURL)
+                return try await withTimeout(seconds: 15) { try await composed(video: quality.url, audio: audioURL) }
             } catch {
                 if let muxed = media.muxedURL { return AVPlayerItem(url: muxed) }
                 throw error
@@ -72,6 +93,15 @@ enum StreamResolver {
         if let muxed = media.muxedURL { return AVPlayerItem(url: muxed) }
         if let audio = media.audioURL { return AVPlayerItem(url: audio) }
         throw StreamResolverError.noPlayableStream
+    }
+
+    private static func withTimeout<T: Sendable>(seconds: Double, _ work: @escaping @Sendable () async throws -> T) async throws -> T {
+        try await withThrowingTaskGroup(of: T.self) { group in
+            group.addTask { try await work() }
+            group.addTask { try await Task.sleep(for: .seconds(seconds)); throw StreamResolverError.timedOut }
+            defer { group.cancelAll() }
+            return try await group.next()!
+        }
     }
 
     private static func composed(video: URL, audio: URL) async throws -> AVPlayerItem {

@@ -139,7 +139,6 @@ struct HistoryView: View {
 struct SettingsView: View {
     @AppStorage(Settings.qualityKey) private var quality = 1080
     @AppStorage(Settings.autoplayKey) private var autoplay = true
-    @AppStorage(Settings.sponsorBlockKey) private var sponsorBlock = true
 
     var body: some View {
         Form {
@@ -148,7 +147,7 @@ struct SettingsView: View {
                     ForEach([2160, 1440, 1080, 720, 480, 360], id: \.self) { Text("\($0)p").tag($0) }
                 }
                 Toggle("Autoplay", isOn: $autoplay)
-                Toggle("SponsorBlock", isOn: $sponsorBlock)
+                NavigationLink("SponsorBlock") { SponsorBlockSettings() }
             }
             Section("Data") {
                 NavigationLink("Subscriptions import/export") { SubscriptionTransferView() }

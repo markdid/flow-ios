@@ -9,7 +9,10 @@ enum Settings {
     static let qualityKey = "preferredQuality"
     static let autoplayKey = "autoplay"
     static let sponsorBlockKey = "sponsorBlock"
-    static let defaults: [String: Any] = [qualityKey: 1080, autoplayKey: true, sponsorBlockKey: true]
+    static let sponsorAutoSkipKey = "sponsorAutoSkip"
+    static let defaults: [String: Any] = [qualityKey: 1080, autoplayKey: true, sponsorBlockKey: true,
+                                          sponsorAutoSkipKey: ["sponsor", "selfpromo", "interaction"]]
+    static var autoSkipCategories: Set<String> { Set(UserDefaults.standard.stringArray(forKey: sponsorAutoSkipKey) ?? []) }
 }
 
 @MainActor @Observable final class PlayerModel {
@@ -28,6 +31,10 @@ enum Settings {
     private(set) var audioOnly = false
     private(set) var history: [VideoItem] = []
     private(set) var lastSkipped: SponsorSegment?
+    /// All segments for the current video, for the timeline strip.
+    private(set) var segments: [SponsorSegment] = []
+    /// A segment the playhead is inside that isn't auto-skipped, offered as a skip button.
+    private(set) var manualSegment: SponsorSegment?
     private(set) var commentPreview: VideoComment?
     private(set) var commentCount: String?
     var expanded = false
@@ -45,7 +52,6 @@ enum Settings {
     @ObservationIgnored private var generation = 0
     @ObservationIgnored private var artworkTask: Task<Void, Never>?
 
-    private static let autoSkipCategories: Set<String> = ["sponsor", "selfpromo", "interaction"]
 
     init() {
         UserDefaults.standard.register(defaults: Settings.defaults)
@@ -89,7 +95,7 @@ enum Settings {
         current = video
         details = nil; related = []; media = nil; quality = nil; duration = 0; position = 0; lastSkipped = nil
         commentPreview = nil; commentCount = nil
-        sponsor = SponsorSkipSession(segments: [])
+        sponsor = SponsorSkipSession(segments: []); segments = []; manualSegment = nil
         if expand { expanded = true }
         player.replaceCurrentItem(with: nil)
         updateNowPlaying(); loadArtwork(for: video)
@@ -112,21 +118,29 @@ enum Settings {
             async let segments = UserDefaults.standard.bool(forKey: Settings.sponsorBlockKey)
                 ? ((try? await SponsorBlockClient().fetch(videoID: video.id)) ?? []) : []
             do {
+                let started = Date()
+                func log(_ message: String) { print("[load \(video.id)] +\(String(format: "%.1f", Date().timeIntervalSince(started)))s \(message)") }
+                log("resolve start")
                 let media = try await StreamResolver.resolve(videoID: video.id)
+                log("resolved qualities=\(media.qualities.map { "\($0.height)\($0.codec)" }) audio=\(media.audioURL != nil) muxed=\(media.muxedURL != nil) hls=\(media.hlsURL != nil)")
                 let quality = StreamResolver.pick(media.qualities, preferred: preferred)
                 let item = try await StreamResolver.makeItem(media: media, quality: quality, audioOnly: audioOnly)
+                log("item built quality=\(quality?.label ?? "-") \(quality?.codec ?? "")")
                 guard let self, !Task.isCancelled, generation == self.generation else { return }
                 self.media = media; self.quality = quality
                 self.start(item, at: resume)
                 self.watchSession = await self.library?.beginWatch(videoID: video.id)
             } catch {
                 guard let self, !Task.isCancelled, generation == self.generation else { return }
+                print("[load \(video.id)] failed: \(error)")
                 self.status = .failed(error.localizedDescription)
             }
             let details = await detailsResult
             let fetched = await segments
             guard let self, !Task.isCancelled, generation == self.generation else { return }
-            self.sponsor = SponsorSkipSession(segments: fetched.filter { Self.autoSkipCategories.contains($0.category) })
+            let autoSkip = Settings.autoSkipCategories
+            self.segments = SponsorSkipSession(segments: fetched).segments
+            self.sponsor = SponsorSkipSession(segments: fetched.filter { autoSkip.contains($0.category) })
             if let details { self.apply(details, to: video) }
             let page = await comments
             guard !Task.isCancelled, generation == self.generation else { return }
@@ -157,6 +171,7 @@ enum Settings {
             let failure = item.status == .failed ? (item.error?.localizedDescription ?? "Playback failed") : nil
             Task { @MainActor in
                 guard let self, self.player.currentItem === item else { return }
+                print("[item] status=\(item.status.rawValue) error=\(String(describing: item.error))")
                 if let failure { self.status = .failed(failure) }
                 else if item.status == .readyToPlay {
                     self.status = .ready
@@ -186,6 +201,18 @@ enum Settings {
     func seek(to seconds: Double) {
         player.seek(to: CMTime(seconds: seconds, preferredTimescale: 600), toleranceBefore: .zero, toleranceAfter: .zero)
         position = seconds
+    }
+
+    func undoSkip() {
+        guard let segment = lastSkipped else { return }
+        lastSkipped = nil
+        seek(to: segment.start)
+    }
+
+    func skipManual() {
+        guard let segment = manualSegment else { return }
+        manualSegment = nil
+        seek(to: segment.end)
     }
 
     func select(quality: StreamQuality) { switchSource(quality: quality, audioOnly: false) }
@@ -240,7 +267,15 @@ enum Settings {
         if let segment = sponsor.automaticTarget(at: seconds, isPlaying: isPlaying, duration: duration > 0 ? duration : nil) {
             seek(to: segment.end)
             lastSkipped = segment
+            let id = segment.id
+            Task { [weak self] in
+                try? await Task.sleep(for: .seconds(5))
+                if self?.lastSkipped?.id == id { self?.lastSkipped = nil }
+            }
         }
+        let autoSkip = Settings.autoSkipCategories
+        let inside = segments.first { $0.contains(seconds) && !autoSkip.contains($0.category) && $0.end - seconds > 1 }
+        if inside?.id != manualSegment?.id { manualSegment = inside }
         checkpoint()
     }
 

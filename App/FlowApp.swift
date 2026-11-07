@@ -98,6 +98,13 @@ enum DebugLaunch {
             return arguments[index + 1]
         }
         if let id = value("-play") { player.play(VideoItem(id: id, title: "")) }
+        if let at = value("-at").flatMap(Double.init) {
+            Task {
+                while player.status != .ready { try? await Task.sleep(for: .milliseconds(200)) }
+                try? await Task.sleep(for: .seconds(1))
+                player.seek(to: at)
+            }
+        }
         if arguments.contains("-comments") {
             Task { try? await Task.sleep(for: .seconds(6)); player.commentsPresented = true }
         }
