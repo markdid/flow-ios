@@ -17,6 +17,8 @@ public struct WatchDetails: Sendable {
     public let channel: WatchChannel?
     public let related: [VideoReference]
     public let relatedNotice: String?
+    public var relatedPresentation: [String: VideoPresentation] = [:]
+    public var relatedContinuation: String?
 }
 public enum WatchDetailsParser {
     private typealias Object = [String: Any]
@@ -58,7 +60,7 @@ public enum WatchDetailsParser {
             return WatchFact(value: value, label: text(renderer["label"]) ?? "")
         }
         let rawRelated = path(watch, "secondaryResults", "secondaryResults", "results") as? [Any]
-        var related: [VideoReference] = []; var notice: String?
+        var related: [VideoReference] = []; var notice: String?; var relatedPresentation: [String: VideoPresentation] = [:]
         if let rawRelated {
             var normalized: [Object] = []; var omitted = 0; var exhausted = false
             func flatten(_ values: [Any], depth: Int) {
@@ -80,7 +82,7 @@ public enum WatchDetailsParser {
                 let synthetic: Object = ["onResponseReceivedCommands": [["appendContinuationItemsAction": ["continuationItems": [item]]]]]
                 do {
                     let page = try VideoSearchParser.parse(JSONSerialization.data(withJSONObject: synthetic))
-                    for video in page.videos where seen.insert(video.id).inserted { related.append(video) }
+                    for video in page.videos where seen.insert(video.id).inserted { related.append(video); relatedPresentation[video.id] = page.presentation[video.id] }
                 } catch SearchError.noSupportedVideos { omitted += 1 }
             }
             if omitted > 0 || exhausted { notice = "Some related items could not be displayed. This is a partial first page." }
@@ -88,7 +90,7 @@ public enum WatchDetailsParser {
         guard primary != nil || secondary != nil || !items.isEmpty || rawRelated != nil else { throw SearchError.unsupportedResponse }
         return WatchDetails(title: text(primary?["title"]), description: description,
             views: text(path(primary, "viewCount", "videoViewCountRenderer", "viewCount")), published: text(primary?["dateText"]),
-            facts: facts, channel: channel, related: related, relatedNotice: notice)
+            facts: facts, channel: channel, related: related, relatedNotice: notice, relatedPresentation: relatedPresentation)
     }
 }
 public struct WatchDetailsClient {

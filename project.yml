@@ -1,18 +1,24 @@
 name: FlowPrototype
 options:
   deploymentTarget:
-    iOS: '16.0'
+    iOS: '17.0'
 packages:
   FlowCore:
     path: FlowCore
+  YouTubeKit:
+    url: https://github.com/alexeichhorn/YouTubeKit
+    exactVersion: 0.4.10
 settings:
   base:
     SWIFT_VERSION: '5.0'
-    PRODUCT_BUNDLE_IDENTIFIER: org.example.flowprototype
+    PRODUCT_BUNDLE_IDENTIFIER: com.markdid.flowprototype
+    DEVELOPMENT_TEAM: RKQ85V2J7Z
+    CODE_SIGN_STYLE: Automatic
     GENERATE_INFOPLIST_FILE: YES
     INFOPLIST_KEY_UILaunchScreen_Generation: YES
     INFOPLIST_KEY_UIApplicationSceneManifest_Generation: YES
-    INFOPLIST_KEY_CFBundleDisplayName: Flow Prototype
+    INFOPLIST_KEY_CFBundleDisplayName: Flow
+    INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone: UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight
     CURRENT_PROJECT_VERSION: 1
     MARKETING_VERSION: 0.1.0
     TARGETED_DEVICE_FAMILY: '1,2'
@@ -21,32 +27,16 @@ targets:
     type: application
     platform: iOS
     sources: [App]
+    info:
+      path: App/Info.plist
+      properties:
+        UIBackgroundModes: [audio]
+        ITSAppUsesNonExemptEncryption: false
     dependencies:
       - package: FlowCore
-  FlowPrototypeTests:
-    type: bundle.unit-test
-    platform: iOS
-    sources: [AppTests]
-    dependencies:
-      - target: FlowPrototype
-    settings:
-      base:
-        PRODUCT_BUNDLE_IDENTIFIER: org.example.flowprototype.tests
-  FlowPrototypeUITests:
-    type: bundle.ui-testing
-    platform: iOS
-    sources: [UITests]
-    dependencies:
-      - target: FlowPrototype
-    settings:
-      base:
-        PRODUCT_BUNDLE_IDENTIFIER: org.example.flowprototype.uitests
+      - package: YouTubeKit
 schemes:
   FlowPrototype:
     build:
       targets:
         FlowPrototype: all
-    test:
-      targets:
-        - FlowPrototypeTests
-        - FlowPrototypeUITests

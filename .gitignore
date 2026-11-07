@@ -10,3 +10,4 @@ Documentation/VerificationLogs/
 .env.*
 *.p12
 *.mobileprovision
+build/

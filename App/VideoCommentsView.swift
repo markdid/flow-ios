@@ -65,10 +65,9 @@ struct VideoCommentsView: View {
     var body: some View {
         List {
             Section {
-                Text("Read-only public comments from YouTube. Opening this screen connects to YouTube. Posting, likes and rich-text links are not supported.").font(.footnote).foregroundStyle(.secondary)
                 if let total = model.totalText { Text(total) }
                 if !model.sorts.isEmpty && !model.replies {
-                    Menu("Sort comments") {
+                    Menu("Sort") {
                         ForEach(model.sorts) { option in Button(option.title) { model.select(option) }.disabled(option.token == model.selectedSort) }
                     }
                 }
@@ -76,28 +75,27 @@ struct VideoCommentsView: View {
             ForEach(model.comments) { comment in
                 VStack(alignment: .leading, spacing: 6) {
                     HStack {
-                        Text(comment.author.isEmpty ? "Unknown author" : comment.author).font(.headline)
+                        Text(comment.author.isEmpty ? "Unknown" : comment.author).font(.subheadline.weight(.semibold))
                         if comment.pinned { Image(systemName: "pin.fill").accessibilityLabel("Pinned") }
                     }
                     Text(comment.text).textSelection(.enabled)
                     HStack {
                         if let time = comment.published { Text(time) }
-                        if let likes = comment.likes, !likes.isEmpty { Text("Likes: \(likes)") }
+                        if let likes = comment.likes, !likes.isEmpty { Label(likes, systemImage: "hand.thumbsup") }
                     }.font(.caption).foregroundStyle(.secondary)
                     if let token = comment.repliesToken {
                         NavigationLink("View replies") { VideoCommentsView(videoID: model.videoID, repliesToken: token) }
                     }
                 }.padding(.vertical, 4)
             }
-            if let notice = model.notice { Text(notice).font(.footnote) }
             if let error = model.error { Text(error).foregroundStyle(.red) }
-            if model.busy { ProgressView("Loading comments…") }
+            if model.busy { ProgressView().frame(maxWidth: .infinity) }
             else {
-                if model.loaded && model.comments.isEmpty { Text("No comments in this response.") }
+                if model.loaded && model.comments.isEmpty { Text("No comments") }
                 if model.error != nil { Button("Retry") { model.load(more: model.continuation != nil) } }
                 else if model.continuation != nil { Button("Load more") { model.load(more: true) } }
             }
-        }.navigationTitle(model.replies ? "Replies" : "Comments")
+        }.listStyle(.plain).navigationTitle(model.replies ? "Replies" : "Comments")
             .task { if !model.loaded { model.load() } }
             .onDisappear { model.cancel() }
     }

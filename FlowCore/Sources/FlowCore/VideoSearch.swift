@@ -19,6 +19,7 @@ public struct SearchFilterGroup: Sendable {
 
 public struct VideoPresentation: Sendable {
     public let channel: String?
+    public let channelID: String?
     public let duration: String?
     public let views: String?
     public let published: String?
@@ -82,11 +83,30 @@ public enum VideoSearchParser {
               let title = text(renderer?["title"] ?? renderer?["headline"] ?? metadata?["title"]),
               let url = URL(string: "https://www.youtube.com/watch?v=\(id)"),
               let reference = try? VideoReference(url: url, title: title) else { return nil }
-        let channel = text(renderer?["ownerText"] ?? renderer?["shortBylineText"] ?? renderer?["longBylineText"])
+        let ownerRuns = renderer?["ownerText"] ?? renderer?["shortBylineText"] ?? renderer?["longBylineText"]
+        let rows = objects(path(metadata, "metadata", "contentMetadataViewModel", "metadataRows"))
+        let rowTexts = rows.map { objects($0["metadataParts"]).compactMap { text($0["text"]) } }
+        let parts = rowTexts.flatMap { $0 }
+        func isViews(_ value: String) -> Bool {
+            let lower = value.lowercased()
+            return lower.contains("view") || lower.contains("watching") || (value.last.map { "KMB".contains($0) } ?? false) && value.first?.isNumber == true
+        }
+        func isDate(_ value: String) -> Bool {
+            let lower = value.lowercased()
+            return lower.contains("ago") || lower.hasPrefix("streamed") || lower.hasPrefix("premiere") || lower.hasPrefix("scheduled")
+        }
+        let channel = text(ownerRuns) ?? rowTexts.first?.first.flatMap { isViews($0) || isDate($0) ? nil : $0 }
+        let channelID = (objects(path(ownerRuns, "runs")).compactMap { path($0, "navigationEndpoint", "browseEndpoint", "browseId") as? String }.first
+            ?? path(metadata, "image", "decoratedAvatarViewModel", "rendererContext", "commandContext", "onTap", "innertubeCommand", "browseEndpoint", "browseId") as? String)
+            .flatMap { $0.hasPrefix("UC") ? $0 : nil }
+        let badge = objects(path(lockup, "contentImage", "thumbnailViewModel", "overlays"))
+            .flatMap { objects(path($0, "thumbnailBottomOverlayViewModel", "badges")) + objects(path($0, "thumbnailOverlayBadgeViewModel", "thumbnailBadges")) }
+            .compactMap { path($0, "thumbnailBadgeViewModel", "text") as? String }.first
         let isShort = content["reelItemRenderer"] != nil || ["LOCKUP_CONTENT_TYPE_SHORTS", "LOCKUP_CONTENT_TYPE_SHORT"].contains(lockup?["contentType"] as? String ?? "")
-        let details = VideoPresentation(channel: channel,
-            duration: text(renderer?["lengthText"]), views: text(renderer?["viewCountText"]),
-            published: text(renderer?["publishedTimeText"]),
+        let details = VideoPresentation(channel: channel, channelID: channelID,
+            duration: text(renderer?["lengthText"]) ?? badge,
+            views: text(renderer?["viewCountText"]) ?? parts.first(where: isViews),
+            published: text(renderer?["publishedTimeText"]) ?? parts.first(where: isDate),
             thumbnailURL: URL(string: "https://i.ytimg.com/vi/\(reference.id)/hqdefault.jpg")!, isShort: isShort)
         return (reference, details)
     }
@@ -130,6 +150,7 @@ public enum VideoSearchParser {
     private static func objects(_ value: Any?) -> [Object] {
         (value as? [Any] ?? []).compactMap { $0 as? Object }
     }
+    private static func path(_ value: Any?, _ keys: String...) -> Any? { keys.reduce(value) { ($0 as? Object)?[$1] } }
     private static func flatten(_ value: Any?) -> [Object] {
         objects(value).flatMap { entry -> [Object] in
             guard let section = entry["itemSectionRenderer"] as? Object,

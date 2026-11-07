@@ -54,24 +54,19 @@ struct RemotePlaylistView: View {
     @StateObject private var model = RemotePlaylistModel()
     var body: some View {
         List {
-            Section("Open public playlist") {
-                TextField("YouTube playlist link or ID", text: $model.input).textInputAutocapitalization(.never).autocorrectionDisabled()
-                Button("Open playlist") { model.open() }.disabled(model.input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                Text("Opening connects to YouTube. Private lists and mixes are not supported. Only loaded videos are shown; unavailable entries may be omitted.").font(.footnote)
+            Section {
+                TextField("Playlist link or ID", text: $model.input).textInputAutocapitalization(.never).autocorrectionDisabled()
+                Button("Open") { model.open() }.disabled(model.input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
-            if model.shortsGrid { Text("YouTube returned a Shorts grid, which may stop at 100 videos. This may not be the complete playlist.").font(.footnote) }
             if let error = model.error { Text(error).foregroundStyle(.red) }
             ForEach(model.videos) { video in
-                VStack(alignment: .leading) {
-                    NavigationLink(video.title) { PlaybackView(video: video) }
-                    PlaylistActions(video: video)
-                }
+                VideoRow(video: VideoItem(video, nil))
             }
-            if model.loaded && model.videos.isEmpty { Text("No available videos in this response.") }
-            if model.busy { ProgressView("Loading playlist…") }
+            if model.loaded && model.videos.isEmpty { Text("No videos") }
+            if model.busy { ProgressView() }
             else {
                 if model.continuation != nil { Button("Load more") { model.load(more: true) } }
-                if model.error != nil && model.canRetry { Button("Retry page") { model.load(more: model.continuation != nil) } }
+                if model.error != nil && model.canRetry { Button("Retry") { model.load(more: model.continuation != nil) } }
             }
         }.navigationTitle(model.title).onDisappear { model.cancel() }
     }
