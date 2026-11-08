@@ -31,9 +31,12 @@ enum SearchSuggestions {
     private var task: Task<Void, Never>?
     private var suggestTask: Task<Void, Never>?
 
-    var showingResults: Bool { !submitted.isEmpty && query == submitted }
+    /// Puts the submitted query back after the field loses focus without a new search.
+    func restoreSubmitted() {
+        if !submitted.isEmpty, query != submitted { query = submitted }
+    }
 
-    private func suggest() {
+    func suggest() {
         suggestTask?.cancel()
         let query = query.trimmingCharacters(in: .whitespaces)
         guard !query.isEmpty else { suggestions = []; return }
@@ -91,27 +94,61 @@ enum SearchSuggestions {
 struct SearchView: View {
     @Environment(MetadataCache.self) private var cache
     @State private var model = SearchModel()
-    @State private var focused = true
+    @FocusState private var focused: Bool
     var initial = ""
+
+    private var showingResults: Bool { !model.submitted.isEmpty && !focused }
 
     var body: some View {
         content
-            .navigationTitle("Search")
+            .modifier(TopBar { searchField.padding(.horizontal, 16).padding(.bottom, 8) })
             .navigationBarTitleDisplayMode(.inline)
-            .searchable(text: $model.query, isPresented: $focused, placement: .navigationBarDrawer(displayMode: .always), prompt: "Search YouTube")
-            .onSubmit(of: .search) { focused = false; model.search(cache: cache) }
             .toolbar {
-                if model.showingResults, !model.filters.isEmpty {
-                    ToolbarItem(placement: .topBarTrailing) { filterMenu }
+                ToolbarItem(placement: .topBarTrailing) {
+                    filterMenu.disabled(!showingResults || model.filters.isEmpty)
                 }
             }
             .onAppear {
-                if !initial.isEmpty, model.submitted.isEmpty { focused = false; model.search(initial, cache: cache) }
+                guard model.submitted.isEmpty else { return }
+                if initial.isEmpty { focused = true } else { model.search(initial, cache: cache) }
+            }
+            .onChange(of: focused) { _, isFocused in
+                if isFocused { model.suggest() } else { model.restoreSubmitted() }
             }
     }
 
+    private var searchField: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
+            TextField("Search YouTube", text: $model.query)
+                .focused($focused)
+                .submitLabel(.search)
+                .autocorrectionDisabled()
+                .textInputAutocapitalization(.never)
+                .onSubmit { submit() }
+            if focused, !model.query.isEmpty {
+                Button { model.query = "" } label: {
+                    Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Clear")
+            }
+        }
+        .padding(.horizontal, 12)
+        .frame(height: 40)
+        .frame(maxWidth: .infinity)
+        .background(.fill.tertiary, in: Capsule())
+        .contentShape(Capsule())
+        .onTapGesture { focused = true }
+    }
+
+    private func submit(_ term: String? = nil) {
+        focused = false
+        model.search(term, cache: cache)
+    }
+
     @ViewBuilder private var content: some View {
-        if model.showingResults {
+        if showingResults {
             ScrollView {
                 LazyVStack(spacing: 22) {
                     ForEach(model.items) { video in
@@ -133,7 +170,7 @@ struct SearchView: View {
                 let terms = model.query.trimmingCharacters(in: .whitespaces).isEmpty ? model.recent : model.suggestions
                 ForEach(terms, id: \.self) { term in
                     let isRecent = model.recent.contains(term)
-                    Button { focused = false; model.search(term, cache: cache) } label: {
+                    Button { submit(term) } label: {
                         HStack(spacing: 14) {
                             Image(systemName: isRecent ? "clock.arrow.circlepath" : "magnifyingglass").foregroundStyle(.secondary).frame(width: 20)
                             Text(term).foregroundStyle(.primary)
@@ -149,6 +186,7 @@ struct SearchView: View {
                 }
             }
             .listStyle(.plain)
+            .scrollDismissesKeyboard(.immediately)
         }
     }
 
@@ -165,5 +203,18 @@ struct SearchView: View {
             }
         } label: { Image(systemName: "slider.horizontal.3") }
         .accessibilityLabel("Filters")
+    }
+}
+
+/// Pins content under the navigation bar so scrolling content passes beneath it.
+private struct TopBar<Bar: View>: ViewModifier {
+    @ViewBuilder var bar: Bar
+
+    func body(content: Content) -> some View {
+        if #available(iOS 26.0, *) {
+            content.safeAreaBar(edge: .top) { bar }
+        } else {
+            content.safeAreaInset(edge: .top, spacing: 0) { bar.background(.bar) }
+        }
     }
 }
