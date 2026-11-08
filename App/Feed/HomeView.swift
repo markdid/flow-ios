@@ -22,7 +22,6 @@ struct HomeView: View {
             .padding(.bottom, 20)
         }
         .refreshable { reload(); while model.loading { try? await Task.sleep(for: .milliseconds(200)) } }
-        .navigationTitle("Flow")
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 NavigationLink(value: Route.search("")) { Image(systemName: "magnifyingglass") }.accessibilityLabel("Search")
